@@ -13,7 +13,7 @@ target sqlite.o pkg : FilePath := do
   let hJob ← inputTextFile <| pkg.dir / "bindings" / "sqlite3.h"
   let extJob ← inputTextFile <| pkg.dir / "bindings" / "sqlite3ext.h"
   let srcJob := srcJob |>.add hJob |>.add extJob
-  let weakArgs := #["-I", (pkg.dir / "bindings").toString]
+  let weakArgs := #["-I", (pkg.dir / "bindings").toString, "-D_FILE_OFFSET_BITS=64"]
   buildO oFile srcJob weakArgs (traceArgs := #["-fPIC"]) (extraDepTrace := getLeanTrace)
 
 target leansqlite.o pkg : FilePath := do
