@@ -39,5 +39,5 @@ extern_lib leansqlite pkg := do
 lean_lib SQLite where
   needs := #[leansqlite]
 
-@[test_driver]
+@[default_target, test_driver]
 lean_exe Test
