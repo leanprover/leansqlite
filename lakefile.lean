@@ -14,6 +14,12 @@ target sqlite.o pkg : FilePath := do
   let extJob ← inputTextFile <| pkg.dir / "bindings" / "sqlite3ext.h"
   let srcJob := srcJob |>.add hJob |>.add extJob
   let weakArgs := #["-I", (pkg.dir / "bindings").toString]
+  -- LFS support is disabled. This is because it causes linker errors on Linux, where newer glibc
+  -- headers use macros to redirect standard functions (fcntl, fopen, etc.) to their 64-bit variants
+  -- (fcntl64, fopen64, etc.). SQLite detects and uses these, but Lean's bundled libc only provides
+  -- fcntl and not fcntl64. On 32-bit systems this would limit database files to ~2GB, so we
+  -- explicitly fail compilation on 32-bit platforms in the FFI wrappers. On 64-bit systems, there
+  -- is no limitation.
   buildO oFile srcJob weakArgs (traceArgs := #["-fPIC", "-DSQLITE_DISABLE_LFS"]) (extraDepTrace := getLeanTrace)
 
 target leansqlite.o pkg : FilePath := do

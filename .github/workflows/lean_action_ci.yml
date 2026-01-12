@@ -12,3 +12,45 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: leanprover/lean-action@v1
+
+  test-large-files:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create large test database
+        run: |
+          # Create a >2.5GB SQLite database using sparse file (doesn't use actual disk space)
+          python3 << 'EOF'
+          import sqlite3
+          import os
+
+          # Create a valid SQLite database
+          db = sqlite3.connect('large_test.db')
+          db.execute('CREATE TABLE test (id INTEGER PRIMARY KEY, data TEXT)')
+          db.execute('INSERT INTO test VALUES (1, "test")')
+          db.commit()
+          db.close()
+
+          # Extend it to 2.6GB using truncate (creates sparse file)
+          with open('large_test.db', 'ab') as f:
+              f.truncate(2600 * 1024 * 1024)  # 2.6GB
+
+          size = os.path.getsize('large_test.db')
+          print(f'Database size: {size / (1024**3):.2f} GB')
+
+          # Verify the file is actually >2.5GB
+          expected = 2600 * 1024 * 1024
+          if size < expected:
+              print(f'ERROR: File size {size} is less than expected {expected}')
+              exit(1)
+          EOF
+
+          # Show size for debugging
+          ls -lh large_test.db
+          du -h large_test.db  # Shows actual disk usage (should be small)
+
+      - uses: leanprover/lean-action@v1
+        with:
+          test-args: '-- large_test.db'

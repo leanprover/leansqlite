@@ -4,6 +4,14 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: David Thrane Christiansen
 */
 
+// This library disables large file support to avoid linking issues with Lean's bundled libc.
+// On 32-bit systems, this would limit database files to ~2GB. Since we don't have CI to test
+// error handling in this situation, compilation fails.
+// If emscripten becomes a target of interest, then this conditional can be made more specific.
+#if defined(__i386__) || defined(_M_IX86) || defined(__arm__) || (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 4)
+#error "32-bit platforms are not supported by the FFI bindings."
+#endif
+
 #include <lean/lean.h>
 #include <sqlite3.h>
 #include <string.h>
