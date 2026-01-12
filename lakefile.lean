@@ -33,11 +33,12 @@ extern_lib leansqlite pkg := do
   let sqliteObj ← sqlite.o.fetch
   let leansqliteObj ← leansqlite.o.fetch
   let libFile := "leansqlite"
-  buildStaticLib (pkg.staticLibDir / libFile) #[sqliteObj, leansqliteObj]
+  buildStaticLib (pkg.staticLibDir / nameToStaticLib libFile) #[sqliteObj, leansqliteObj]
 
 @[default_target]
 lean_lib SQLite where
   needs := #[leansqlite]
+  precompileModules := true
 
 @[default_target, test_driver]
 lean_exe Test
