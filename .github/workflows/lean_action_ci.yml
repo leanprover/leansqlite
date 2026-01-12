@@ -19,6 +19,46 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install elan
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      - name: Cache elan toolchain
+        uses: actions/cache/restore@v3
+        id: cache-elan
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain') }}
+
+      - name: Cache Lake build
+        uses: actions/cache/restore@v3
+        id: cache-lake
+        with:
+          path: .lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ hashFiles('**/*.lean', 'bindings/**/*') }}
+          restore-keys: |
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ hashFiles('**/*.lean', 'bindings/**/*') }}
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-
+            lake-${{ runner.os }}-
+
+      - name: Build project
+        run: lake build
+
+      - name: Save elan cache
+        uses: actions/cache/save@v3
+        if: steps.cache-elan.outputs.cache-hit != 'true'
+        with:
+          path: ~/.elan
+          key: ${{ steps.cache-elan.outputs.cache-primary-key }}
+
+      - name: Save Lake cache
+        uses: actions/cache/save@v3
+        if: steps.cache-lake.outputs.cache-hit != 'true'
+        with:
+          path: .lake
+          key: ${{ steps.cache-lake.outputs.cache-primary-key }}
+
       - name: Create large test database
         run: |
           # Create a >2.5GB SQLite database using sparse file (doesn't use actual disk space)
@@ -51,6 +91,5 @@ jobs:
           ls -lh large_test.db
           du -h large_test.db  # Shows actual disk usage (should be small)
 
-      - uses: leanprover/lean-action@v1
-        with:
-          test-args: '-- large_test.db'
+      - name: Test large file support
+        run: lake test -- large_test.db
