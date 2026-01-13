@@ -9,15 +9,44 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        lean-version:
+          - toolchain-file
+          - leanprover/lean4:4.25.0
+          - leanprover/lean4:4.26.0
+          - leanprover/lean4:4.27.0-rc1
+          - leanprover/lean4-nightly:nightly-2026-01-12
+
+    name: build (lean ${{ matrix.lean-version }})
+
     steps:
       - uses: actions/checkout@v5
+
+      - name: Set Lean version
+        if: matrix.lean-version != 'toolchain-file'
+        run: echo "${{ matrix.lean-version }}" > lean-toolchain
+
       - uses: leanprover/lean-action@v1
 
   test-large-files:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        lean-version:
+          - toolchain-file
+          - leanprover/lean4:stable
+          - leanprover/lean4-nightly:nightly-2026-01-06
+
+    name: test-large-files (lean ${{ matrix.lean-version }})
+
     steps:
       - uses: actions/checkout@v5
+
+      - name: Set Lean version
+        if: matrix.lean-version != 'toolchain-file'
+        run: echo "${{ matrix.lean-version }}" > lean-toolchain
 
       - name: Install elan
         run: |
