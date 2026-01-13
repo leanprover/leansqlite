@@ -364,3 +364,9 @@ lean_obj_res leansqlite_exec(b_lean_obj_arg connection, lean_obj_arg sql) {
     return lean_io_result_mk_ok(lean_box(0));
   }
 }
+
+lean_obj_res leansqlite_last_insert_rowid(b_lean_obj_arg connection) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  sqlite3_int64 rowid = sqlite3_last_insert_rowid(db);
+  return lean_io_result_mk_ok(lean_box_uint64(rowid));
+}

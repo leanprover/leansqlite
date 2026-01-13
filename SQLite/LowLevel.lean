@@ -153,6 +153,22 @@ public def exec (db : SQLite) (sql : String) : IO Unit :=
   FFI.exec db.connection sql
 
 /--
+Returns the rowid of the most recent successful INSERT into a rowid table.
+
+SQLite tracks an internal row ID column for every table (an {lit}`INTEGER PRIMARY KEY` column
+becomes an alias for this column).
+
+If no successful {lit}`INSERT`s have occurred on this connection, returns 0. If the most recent
+{lit}`INSERT` was into a table without a rowid (e.g., {lit}`WITHOUT ROWID` tables), the return value
+is undefined.
+
+The last rowid is specific to each connection and is not affected by other connections to the same
+file.
+-/
+public def lastInsertRowId (db : SQLite) : IO Int64 :=
+  FFI.lastInsertRowId db.connection
+
+/--
 Transaction modes.
 -/
 public inductive TransactionMode where

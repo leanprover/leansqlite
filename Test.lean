@@ -406,6 +406,59 @@ def testTransactions (db : SQLite) : TestM Unit :=
     else
       recordFailure s!"Expected 0 rows for id=3, got {count}"
 
+def testLastInsertRowId (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Last Insert Row ID ===" do
+    -- Create a table with INTEGER PRIMARY KEY (which is a rowid alias)
+    let createStmt ← db.prepare "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT);"
+    let _ ← createStmt.step
+    recordSuccess "Created users table"
+
+    -- Clear any existing data
+    let clearStmt ← db.prepare "DELETE FROM users;"
+    let _ ← clearStmt.step
+
+    -- Insert first row with explicit NULL for id (auto-generates rowid)
+    let insertStmt1 ← db.prepare "INSERT INTO users (id, name) VALUES (NULL, 'Alice');"
+    let _ ← insertStmt1.step
+    let rowid1 ← db.lastInsertRowId
+    if rowid1 > 0 then
+      recordSuccess s!"First insert returned rowid: {rowid1}"
+    else
+      recordFailure s!"Expected positive rowid, got {rowid1}"
+
+    -- Insert second row - should get a different rowid
+    let insertStmt2 ← db.prepare "INSERT INTO users (id, name) VALUES (NULL, 'Bob');"
+    let _ ← insertStmt2.step
+    let rowid2 ← db.lastInsertRowId
+    if rowid2 > rowid1 then
+      recordSuccess s!"Second insert returned rowid: {rowid2}"
+    else
+      recordFailure s!"Expected rowid > {rowid1}, got {rowid2}"
+
+    -- Verify we can use the rowid to fetch the data
+    let selectStmt ← db.prepare "SELECT name FROM users WHERE id = ?;"
+    selectStmt.bindInt64 1 rowid2
+    let hasRow ← selectStmt.step
+    if hasRow then
+      let name ← selectStmt.columnText 0
+      if name == "Bob" then
+        recordSuccess "Successfully queried using last insert rowid"
+      else
+        recordFailure s!"Expected 'Bob', got '{name}'"
+    else
+      recordFailure "No row found with last insert rowid"
+
+    -- Test with explicit rowid
+    let insertStmt3 ← db.prepare "INSERT INTO users (id, name) VALUES (?, ?);"
+    insertStmt3.bindInt64 1 999
+    insertStmt3.bindText 2 "Charlie"
+    let _ ← insertStmt3.step
+    let rowid3 ← db.lastInsertRowId
+    if rowid3 == 999 then
+      recordSuccess s!"Explicit rowid insert returned: {rowid3}"
+    else
+      recordFailure s!"Expected rowid 999, got {rowid3}"
+
 
 def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO Unit := IO.println) : IO UInt32 := do
   -- Set up monad layers
@@ -428,6 +481,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testInterpolation db
     testResultIter db
     testTransactions db
+    testLastInsertRowId db
   ).run config).run headerRef).run initialStats
 
   -- Print summary

@@ -104,3 +104,6 @@ opaque reset : @&Stmt → IO Unit
 
 @[extern "leansqlite_exec"]
 opaque exec : @&Conn → String → IO Unit
+
+@[extern "leansqlite_last_insert_rowid"]
+opaque lastInsertRowId : @&Conn → IO Int64
