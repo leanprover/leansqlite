@@ -138,5 +138,9 @@ public instance : Iterator (QueryIterator β) IO β where
       else
         return .deflate <| .done ⟨⟩
 
+public instance [Monad n] : IteratorLoop (QueryIterator β) IO n := IteratorLoop.defaultImplementation
+
 public def Stmt.results [Row α] (stmt : Stmt) : @IterM (QueryIterator α) IO α where
   internalState := QueryIterator.mk stmt
+
+public def Stmt.resultsAs (α : Type) [Row α] (stmt : Stmt) : @IterM (QueryIterator α) IO α := stmt.results

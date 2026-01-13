@@ -116,3 +116,6 @@ opaque changes : @&Conn → IO Int64
 
 @[extern "leansqlite_busy_timeout"]
 opaque busyTimeout : @&Conn → Int32 → IO Unit
+
+@[extern "leansqlite_column_name"]
+opaque columnName : @&Stmt → Int32 → IO String

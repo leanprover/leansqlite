@@ -65,6 +65,10 @@ public def columnInt (stmt : Stmt) (column : Int32) : IO Int32 :=
 public def columnInt64 (stmt : Stmt) (column : Int32) : IO Int64 :=
   FFI.columnInt64 stmt.stmt column
 
+/-- Returns the name of a column in the result set (0-indexed). -/
+public def columnName (stmt : Stmt) (column : Int32) : IO String :=
+  FFI.columnName stmt.stmt column
+
 end Stmt
 
 public def Stmt.columnCount (stmt : Stmt) : UInt32 :=
@@ -80,6 +84,10 @@ public inductive DataType where
   | blob : DataType
   | null : DataType
 deriving Repr, BEq, Inhabited
+
+public def DataType.isNull : DataType → Bool
+  | .null => true
+  | _ => false
 
 instance : ToString DataType where
   toString
@@ -146,6 +154,13 @@ public def step (stmt : Stmt) : IO Bool := do
   let result ← FFI.step stmt.stmt
   return result != 0
 
+/--
+Executes a statement, disregarding the availability of results.
+
+Queries should use {name}`step`, which indicates whether a row is available.
+-/
+public def exec (stmt : Stmt) : IO Unit := discard stmt.step
+
 /-- Resets a statement to be executed again. -/
 public def reset (stmt : Stmt) : IO Unit :=
   FFI.reset stmt.stmt
@@ -170,6 +185,17 @@ harmless.
 public def columnType (stmt : Stmt) (column : Int32) : IO Value.DataType := do
   let code ← FFI.columnType stmt.stmt column
   return Value.DataType.fromCode code
+
+/--
+Checks whether a column is {lit}`NULL`.
+
+This check is only meaningful if no automatic type conversions have occurred for the value in
+question.
+-/
+public def columnNull (stmt : Stmt) (column : Int32) : IO Bool := do
+  let t ← stmt.columnType column
+  return t == .null
+
 
 end Stmt
 

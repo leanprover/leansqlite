@@ -399,3 +399,17 @@ lean_obj_res leansqlite_clear_bindings(b_lean_obj_arg stmt_obj) {
     return lean_io_result_mk_ok(lean_box(0));
   }
 }
+
+// Uses standard return convention: lean_obj_res
+// stmt_obj is borrowed: b_lean_obj_arg
+lean_obj_res leansqlite_column_name(b_lean_obj_arg stmt_obj, int32_t column) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *name = sqlite3_column_name(stmt_ptr, column);
+  if (name == NULL) {
+    lean_object *msg = lean_mk_string("Failed to get column name (typically due to an allocation failure in SQLite)");
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(1, msg));
+  } else {
+    lean_object *result = lean_mk_string(name);
+    return lean_io_result_mk_ok(result);
+  }
+}
