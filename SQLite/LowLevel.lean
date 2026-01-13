@@ -6,6 +6,9 @@ Author: David Thrane Christiansen
 module
 public import SQLite.FFI
 
+set_option doc.verso true
+
+
 public structure SQLite where
   filename : System.FilePath
   connection : SQLite.FFI.Conn
@@ -138,3 +141,60 @@ harmless.
 public def columnType (stmt : Stmt) (column : Int32) : IO Value.DataType := do
   let code ← FFI.columnType stmt.stmt column
   return Value.DataType.fromCode code
+
+end Stmt
+
+/--
+Executes SQL that doesn't return data.
+
+Useful for DDL and transaction control.
+-/
+public def exec (db : SQLite) (sql : String) : IO Unit :=
+  FFI.exec db.connection sql
+
+/--
+Transaction modes.
+-/
+public inductive TransactionMode where
+  /-- Default: lock acquired on first read/write -/
+  | deferred : TransactionMode
+  /-- Write lock acquired immediately -/
+  | immediate : TransactionMode
+  /-- Exclusive lock acquired immediately -/
+  | exclusive : TransactionMode
+deriving Repr, BEq
+
+/-- Begins a transaction with the specified mode -/
+public def beginTransaction (db : SQLite) (mode : TransactionMode := .deferred) : IO Unit :=
+  let kw :=
+    match mode with
+    | .deferred => "DEFERRED"
+    | .immediate => "IMMEDIATE"
+    | .exclusive => "EXCLUSIVE"
+  db.exec s!"BEGIN {kw} TRANSACTION"
+
+/-- Commits the current transaction. -/
+public def commit (db : SQLite) : IO Unit :=
+  db.exec "COMMIT"
+
+/-- Rolls the current transaction back. -/
+public def rollback (db : SQLite) : IO Unit :=
+  db.exec "ROLLBACK"
+
+/--
+Executes an IO action within a transaction, automatically committing or rolling back.
+
+If the action succeeds, the transaction is committed. If it throws an exception,
+the transaction is rolled back before re-throwing the exception.
+-/
+public def transaction (db : SQLite) (action : IO α) (mode : TransactionMode := .deferred) : IO α := do
+  beginTransaction db mode
+  try
+    let result ← action
+    commit db
+    return result
+  catch e =>
+    rollback db
+    throw e
+
+end SQLite

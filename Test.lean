@@ -307,6 +307,105 @@ def testResultIter (db : SQLite) : TestM Unit :=
     else
       recordFailure s!"Duplicate insert should have failed. Expected {repr expected}, got {repr all}"
 
+def testTransactions (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Transactions ===" do
+    -- Create a test table
+    let createStmt ← db.prepare "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, balance INTEGER);"
+    let _ ← createStmt.step
+    recordSuccess "Created accounts table"
+
+    -- Clear any existing data
+    let clearStmt ← db.prepare "DELETE FROM accounts;"
+    let _ ← clearStmt.step
+
+    -- Test basic transaction commit
+    db.beginTransaction
+    let insertStmt ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
+    insertStmt.bindInt 1 1
+    insertStmt.bindInt 2 100
+    let _ ← insertStmt.step
+    db.commit
+    recordSuccess "Transaction committed successfully"
+
+    -- Verify data was committed
+    let selectStmt ← db.prepare "SELECT balance FROM accounts WHERE id = 1;"
+    let hasRow ← selectStmt.step
+    if hasRow then
+      let balance ← selectStmt.columnInt 0
+      if balance == 100 then
+        recordSuccess "Committed data verified"
+      else
+        recordFailure s!"Expected balance 100, got {balance}"
+    else
+      recordFailure "No row found after commit"
+
+    -- Test transaction rollback
+    db.beginTransaction
+    let updateStmt ← db.prepare "UPDATE accounts SET balance = 200 WHERE id = 1;"
+    let _ ← updateStmt.step
+    db.rollback
+    recordSuccess "Transaction rolled back successfully"
+
+    -- Verify data was not changed
+    let verifyStmt ← db.prepare "SELECT balance FROM accounts WHERE id = 1;"
+    let hasRow2 ← verifyStmt.step
+    if hasRow2 then
+      let balance ← verifyStmt.columnInt 0
+      if balance == 100 then
+        recordSuccess "Rollback verified, data unchanged"
+      else
+        recordFailure s!"Expected balance 100 after rollback, got {balance}"
+    else
+      recordFailure "No row found after rollback"
+
+    -- Test transaction helper with success
+    match ← (db.transaction (do
+      let insertStmt2 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
+      insertStmt2.bindInt 1 2
+      insertStmt2.bindInt 2 250
+      let _ ← insertStmt2.step
+      pure ())
+    ).toBaseIO with
+    | Except.ok _ =>
+        recordSuccess "Transaction helper committed successfully"
+    | Except.error e =>
+        recordFailure s!"Transaction helper failed: {e}"
+
+    -- Verify transaction helper committed
+    let verifyStmt2 ← db.prepare "SELECT balance FROM accounts WHERE id = 2;"
+    let hasRow3 ← verifyStmt2.step
+    if hasRow3 then
+      let balance ← verifyStmt2.columnInt 0
+      if balance == 250 then
+        recordSuccess "Transaction helper commit verified"
+      else
+        recordFailure s!"Expected balance 250, got {balance}"
+    else
+      recordFailure "No row found after transaction helper"
+
+    -- Test transaction helper with error (rollback)
+    match ← (db.transaction (do
+      let insertStmt3 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
+      insertStmt3.bindInt 1 3
+      insertStmt3.bindInt 2 300
+      let _ ← insertStmt3.step
+      throw (IO.userError "Simulated error")
+      pure ())
+    ).toBaseIO with
+    | Except.ok _ =>
+        recordFailure "Transaction helper should have failed"
+    | Except.error _ =>
+        recordSuccess "Transaction helper correctly caught error"
+
+    -- Verify transaction helper rolled back
+    let verifyStmt3 ← db.prepare "SELECT COUNT(*) FROM accounts WHERE id = 3;"
+    let _ ← verifyStmt3.step
+    let count ← verifyStmt3.columnInt 0
+    if count == 0 then
+      recordSuccess "Transaction helper rollback verified"
+    else
+      recordFailure s!"Expected 0 rows for id=3, got {count}"
+
 
 def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO Unit := IO.println) : IO UInt32 := do
   -- Set up monad layers
@@ -328,6 +427,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testErrorCases db
     testInterpolation db
     testResultIter db
+    testTransactions db
   ).run config).run headerRef).run initialStats
 
   -- Print summary

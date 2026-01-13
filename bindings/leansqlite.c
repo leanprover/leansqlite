@@ -341,3 +341,26 @@ lean_obj_res leansqlite_reset(b_lean_obj_arg stmt_obj) {
     return lean_io_result_mk_ok(lean_box(0));
   }
 }
+
+lean_obj_res leansqlite_exec(b_lean_obj_arg connection, lean_obj_arg sql) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  const char *sql_str = lean_string_cstr(sql);
+  lean_dec(sql);
+
+  char *err_msg = NULL;
+  int code = sqlite3_exec(db, sql_str, NULL, NULL, &err_msg);
+
+  if (code != SQLITE_OK) {
+    lean_object *msg = NULL;
+    if (err_msg == NULL) {
+      lean_object *msg = lean_mk_string("Unknown error");
+    } else {
+      lean_object *msg = lean_mk_string(err_msg);
+      sqlite3_free(err_msg);
+    }
+    assert(msg != NULL);
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
+  } else {
+    return lean_io_result_mk_ok(lean_box(0));
+  }
+}
