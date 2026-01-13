@@ -7,6 +7,7 @@ module
 public import SQLite.FFI
 public import SQLite.LowLevel
 import Std.Data.Iterators
+import Lean.Elab.Command
 
 set_option doc.verso true
 set_option linter.missingDocs true
@@ -124,6 +125,7 @@ public structure QueryIterator (β : Type) where
   stmt : Stmt
 
 open Std
+open Iterators
 
 public instance : Iterator (QueryIterator β) IO β where
   IsPlausibleStep _it
@@ -140,6 +142,13 @@ public instance : Iterator (QueryIterator β) IO β where
         return .deflate <| .done ⟨⟩
 
 public instance [Monad n] : IteratorLoop (QueryIterator β) IO n := IteratorLoop.defaultImplementation
+
+-- Compatibility shim for 4.27.0-rc1
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Std.Iterators.IteratorCollect then
+    elabCommand (← `(command|public instance {n} {β} [Monad n] : IteratorCollect (QueryIterator β) IO n := IteratorCollect.defaultImplementation))
+
 
 /--
 Returns an iterator into all the results of a prepared statement.
