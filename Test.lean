@@ -94,9 +94,9 @@ def testBasicInserts (db : SQLite) : TestM Unit :=
     -- Test bindInt, bindText, bindDouble, bindInt64
     let insertStmt ← expectSuccess "Inserted product 1 (Laptop, bindInt/bindText/bindDouble/bindInt64)" do
       let insertStmt ← db.prepare "INSERT INTO products (id, name, price, stock, description) VALUES (?, ?, ?, ?, ?);"
-      insertStmt.bindInt 1 101
+      insertStmt.bindInt32 1 101
       insertStmt.bindText 2 "Laptop"
-      insertStmt.bindDouble 3 1299.99
+      insertStmt.bindFloat 3 1299.99
       insertStmt.bindInt64 4 5000000000  -- Large number to test int64
       insertStmt.bindText 5 "High-performance laptop"
       discard insertStmt.step
@@ -106,10 +106,10 @@ def testBasicInserts (db : SQLite) : TestM Unit :=
     -- Test bindNull
     expectSuccess  "Inserted product 2 (Mystery Item with NULL values, bindNull)" do
       insertStmt.reset
-      insertStmt.bindInt 1 102
+      insertStmt.bindInt32 1 102
       insertStmt.bindText 2 "Mystery Item"
       insertStmt.bindNull 3  -- NULL price
-      insertStmt.bindInt 4 0
+      insertStmt.bindInt32 4 0
       insertStmt.bindNull 5  -- NULL description
       discard insertStmt.step
 
@@ -117,9 +117,9 @@ def testBasicInserts (db : SQLite) : TestM Unit :=
     -- Test with another product
     expectSuccess "Inserted product 3 (Monitor)" do
       insertStmt.reset
-      insertStmt.bindInt 1 103
+      insertStmt.bindInt32 1 103
       insertStmt.bindText 2 "Monitor"
-      insertStmt.bindDouble 3 449.50
+      insertStmt.bindFloat 3 449.50
       insertStmt.bindInt64 4 2500000000
       insertStmt.bindText 5 "4K display"
       discard insertStmt.step
@@ -163,7 +163,7 @@ def testBlobSupport (db : SQLite) : TestM Unit :=
     let blobInsert ← db.prepare "INSERT INTO files (id, name, data) VALUES (?, ?, ?);"
     expectSuccess "Inserted BLOB data" do
       let testData : ByteArray := ByteArray.mk #[72, 101, 108, 108, 111] -- "Hello"
-      blobInsert.bindInt 1 1
+      blobInsert.bindInt32 1 1
       blobInsert.bindText 2 "test.txt"
       blobInsert.bindBlob 3 testData
       blobInsert.exec
@@ -171,7 +171,7 @@ def testBlobSupport (db : SQLite) : TestM Unit :=
     -- Insert NULL BLOB
     expectSuccess "Inserted NULL BLOB" do
       blobInsert.reset
-      blobInsert.bindInt 1 2
+      blobInsert.bindInt32 1 2
       blobInsert.bindText 2 "empty.txt"
       blobInsert.bindNull 3
       blobInsert.exec
@@ -179,7 +179,7 @@ def testBlobSupport (db : SQLite) : TestM Unit :=
     -- Insert empty BLOB
     expectSuccess "Inserted empty BLOB" do
       blobInsert.reset
-      blobInsert.bindInt 1 3
+      blobInsert.bindInt32 1 3
       blobInsert.bindText 2 "zero.txt"
       blobInsert.bindBlob 3 ByteArray.empty
       blobInsert.exec
@@ -206,7 +206,7 @@ def testBlobSupport (db : SQLite) : TestM Unit :=
 def testUnboundParameters (db : SQLite) : TestM Unit := do
   expectSuccess "Step with unbound parameters succeeded (SQLite treats them as NULL)" do
     let missingStmt ← db.prepare "INSERT INTO products (id, name, price) VALUES (?, ?, ?);"
-    missingStmt.bindInt 1 999
+    missingStmt.bindInt32 1 999
     -- Intentionally skip binding parameters 2 and 3
     -- SQLite allows this - unbound parameters are NULL
     missingStmt.exec
@@ -255,7 +255,7 @@ def testStepAfterDone (db : SQLite) : TestM Unit := do
 def testTypeFlexibility (db : SQLite) : TestM Unit := do
   let text ← expectSuccess' (s!"Integer converted to text: '{·}'") do
     let typeStmt ← db.prepare "SELECT ?;"
-    typeStmt.bindInt 1 42
+    typeStmt.bindInt32 1 42
     typeStmt.exec
     typeStmt.columnText 0
   expect (text == "42") s!"Expected \"42\", got {text.quote}"
@@ -302,8 +302,8 @@ def testErrorCases (db : SQLite) : TestM Unit :=
 
 def testInterpolation (db : SQLite) : TestM Unit :=
   withHeader "=== Testing SQL Interpolation ===" do
-    let treeCreate ← db sql!"CREATE TABLE IF NOT EXISTS trees (id INTEGER PRIMARY KEY, name TEXT, height INTEGER)"
-    treeCreate.exec
+    db exec!"CREATE TABLE IF NOT EXISTS trees (id INTEGER PRIMARY KEY, name TEXT, height INTEGER)"
+
     let treeEmpty ← db sql!"DELETE FROM trees;"
     treeEmpty.exec
 
@@ -320,6 +320,14 @@ def testInterpolation (db : SQLite) : TestM Unit :=
         recordSuccess s!"Interpolation works correctly, found: {n}"
       hasRow ← q1.step
 
+    for n in (← db query!"SELECT name FROM trees WHERE height > {(21 : Int32)}") do
+      if n ≠ "poplar" then
+        throw <| .userError s!"expected poplar, got {n}"
+      else
+        recordSuccess s!"Interpolation works correctly, found: {n}"
+
+
+
 def testResultIter (db : SQLite) : TestM Unit :=
   withHeader "=== Testing result iteration ===" do
     expectSuccess "Created rivers table and deleted old data" do
@@ -331,19 +339,19 @@ def testResultIter (db : SQLite) : TestM Unit :=
       let insertStmt ← db.prepare "INSERT INTO rivers (name, length_km, country) VALUES (?, ?, ?);"
 
       insertStmt.bindText 1 "Amazon"
-      insertStmt.bindDouble 2 6400.0
+      insertStmt.bindFloat 2 6400.0
       insertStmt.bindText 3 "Brazil"
       insertStmt.exec
       insertStmt.reset; insertStmt.clearBindings
 
       insertStmt.bindText 1 "Nile"
-      insertStmt.bindDouble 2 6650.0
+      insertStmt.bindFloat 2 6650.0
       insertStmt.bindText 3 "Egypt"
       insertStmt.exec
       insertStmt.reset; insertStmt.clearBindings
 
       insertStmt.bindText 1 "Mississippi"
-      insertStmt.bindDouble 2 3766.0
+      insertStmt.bindFloat 2 3766.0
       insertStmt.bindText 3 "United States"
       insertStmt.exec
 
@@ -374,8 +382,8 @@ def testTransactions (db : SQLite) : TestM Unit :=
     -- Test basic transaction commit
     db.beginTransaction
     let insertStmt ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
-    insertStmt.bindInt 1 1
-    insertStmt.bindInt 2 100
+    insertStmt.bindInt32 1 1
+    insertStmt.bindInt32 2 100
     insertStmt.exec
     db.commit
     recordSuccess "Transaction committed successfully"
@@ -414,8 +422,8 @@ def testTransactions (db : SQLite) : TestM Unit :=
     try
       db.transaction do
         let insertStmt2 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
-        insertStmt2.bindInt 1 2
-        insertStmt2.bindInt 2 250
+        insertStmt2.bindInt32 1 2
+        insertStmt2.bindInt32 2 250
         insertStmt2.exec
       recordSuccess "Transaction helper committed successfully"
     catch
@@ -437,8 +445,8 @@ def testTransactions (db : SQLite) : TestM Unit :=
     try
       db.transaction do
         let insertStmt3 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
-        insertStmt3.bindInt 1 3
-        insertStmt3.bindInt 2 300
+        insertStmt3.bindInt32 1 3
+        insertStmt3.bindInt32 2 300
         insertStmt3.exec
         throw (IO.userError "Simulated error")
         pure ()
@@ -515,8 +523,8 @@ def testChanges (db : SQLite) : TestM Unit :=
     -- Test INSERT - should affect 1 row
     let insertStmt ← db.prepare "INSERT INTO employees (name, salary, active) VALUES (?, ?, ?);"
     insertStmt.bindText 1 "Alice"
-    insertStmt.bindInt 2 50000
-    insertStmt.bindInt 3 1
+    insertStmt.bindInt32 2 50000
+    insertStmt.bindInt32 3 1
     insertStmt.exec
     let changes1 ← db.changes
     if changes1 == 1 then
@@ -528,22 +536,22 @@ def testChanges (db : SQLite) : TestM Unit :=
     insertStmt.reset
     insertStmt.clearBindings
     insertStmt.bindText 1 "Bob"
-    insertStmt.bindInt 2 60000
-    insertStmt.bindInt 3 1
+    insertStmt.bindInt32 2 60000
+    insertStmt.bindInt32 3 1
     insertStmt.exec
 
     insertStmt.reset
     insertStmt.clearBindings
     insertStmt.bindText 1 "Charlie"
-    insertStmt.bindInt 2 55000
-    insertStmt.bindInt 3 1
+    insertStmt.bindInt32 2 55000
+    insertStmt.bindInt32 3 1
     insertStmt.exec
 
     insertStmt.reset
     insertStmt.clearBindings
     insertStmt.bindText 1 "Diana"
-    insertStmt.bindInt 2 70000
-    insertStmt.bindInt 3 0
+    insertStmt.bindInt32 2 70000
+    insertStmt.bindInt32 3 0
     insertStmt.exec
 
     -- Test UPDATE matching multiple rows
@@ -662,7 +670,7 @@ def testSqlIntrospection (db : SQLite) : TestM Unit :=
     recordSuccess "Expanded SQL retrieved before binding"
 
     -- Bind a parameter and check expanded SQL
-    selectStmt.bindInt 1 100
+    selectStmt.bindInt32 1 100
     let expandedAfter ← selectStmt.expandedSql
     verbose do report s!"  Expanded SQL after binding: {expandedAfter}"
     expect (expandedAfter.contains "100") s!"Expected expanded SQL to contain '100', got: {expandedAfter}"
@@ -1239,15 +1247,15 @@ def testClearBindings (db : SQLite) : TestM Unit :=
 
     -- Test 1: Demonstrate that bindings persist after reset
     let insertStmt ← db.prepare "INSERT INTO bindings_test (value1, value2, value3) VALUES (?, ?, ?);"
-    insertStmt.bindInt 1 100
+    insertStmt.bindInt32 1 100
     insertStmt.bindText 2 "first"
-    insertStmt.bindInt 3 300
+    insertStmt.bindInt32 3 300
     insertStmt.exec
 
     -- Reset without clearing bindings
     insertStmt.reset
     -- Only rebind first two parameters - third one should persist
-    insertStmt.bindInt 1 200
+    insertStmt.bindInt32 1 200
     insertStmt.bindText 2 "second"
     -- Don't bind parameter 3 - it should still be 300
     insertStmt.exec
@@ -1270,7 +1278,7 @@ def testClearBindings (db : SQLite) : TestM Unit :=
     recordSuccess "Called clearBindings"
 
     -- Now bind only first two parameters
-    insertStmt.bindInt 1 400
+    insertStmt.bindInt32 1 400
     insertStmt.bindText 2 "third"
     -- Don't bind parameter 3 - should be NULL now
     let _ ← insertStmt.step
@@ -1295,9 +1303,9 @@ def testClearBindings (db : SQLite) : TestM Unit :=
     recordSuccess "clearBindings can be called multiple times"
 
     -- Bind and insert to verify statement still works
-    insertStmt.bindInt 1 500
+    insertStmt.bindInt32 1 500
     insertStmt.bindText 2 "fourth"
-    insertStmt.bindInt 3 600
+    insertStmt.bindInt32 3 600
     insertStmt.exec
 
     let selectStmt3 ← db.prepare "SELECT value1, value3 FROM bindings_test WHERE value2 = 'fourth';"

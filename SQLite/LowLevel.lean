@@ -7,19 +7,28 @@ module
 public import SQLite.FFI
 
 set_option doc.verso true
+set_option linter.missingDocs true
 
-
+/-- A connection to a SQLite database. -/
 public structure SQLite where
+  /-- The filename from which the database was opened. -/
   filename : System.FilePath
+  /-- The underlying FFI connection object. -/
   connection : SQLite.FFI.Conn
 deriving Repr
 
 namespace SQLite
 
+/--
+Opens a file as a SQLite connection.
+-/
 public def «open» (filename : System.FilePath) : IO SQLite := do
   let connection ← FFI.«open» filename.toString
   return { filename, connection }
 
+/--
+The read/write mode used to open a SQLite file.
+-/
 public inductive Mode where
   /-- Open in read-only mode. The database must already exist. -/
   | readonly
@@ -34,6 +43,9 @@ def Mode.toInt : Mode → Int32
   | .readWrite => 0x00000002
   | .readWriteCreate => 0x00000002 ||| 0x00000004
 
+/--
+The threading model to be used by a SQLite connection.
+-/
 public inductive Threading where
   /--
   The new database connection will use the "multi-thread" threading mode. This means that separate
@@ -53,9 +65,12 @@ def Threading.toInt : Threading → Int32
   | .nomutex => 0x00008000
   | .fullmutex => 0x00010000
 
+/--
+The flags that control the details of opening a SQLite file.
+-/
 public structure OpenFlags where
   /--
-  Whether the file should be openend read-only or read-write, and whether it should be created if it
+  Whether the file should be opened read-only or read-write, and whether it should be created if it
   doesn't already exist.
   -/
   mode : Mode := .readWriteCreate
@@ -80,7 +95,6 @@ public def OpenFlags.readWrite : OpenFlags where
 @[inherit_doc Mode.readWriteCreate]
 public def OpenFlags.readWriteCreate : OpenFlags where
   mode := .readWriteCreate
-
 
 def OpenFlags.toInt (flags : OpenFlags) : Int32 :=
   let { mode, uri, memory, threading } := flags
@@ -118,11 +132,26 @@ The timeout persists for the lifetime of the connection and can be changed at an
 public def busyTimeout (db : SQLite) (ms : Int32) : IO Unit :=
   FFI.busyTimeout db.connection ms
 
+/--
+A prepared statement. Prepared statements are the primary interface to interacting with SQLite data.
+-/
 public structure Stmt where
   db : SQLite
   stmt : FFI.Stmt
 deriving Repr
 
+/--
+Prepares a statement.
+
+Statements may contain host parameters that are later provided with data using the following syntax:
+ - {lit}`?` for positional parameters
+ - {lit}`?NNN` for positional parameters with manually-specified indices
+ - {lit}`:AAAA` for a parameter named {lit}`AAAA` (where {lit}`AAAA` is a SQL identifier)
+ - {lit}`@AAAA` for a parameter named {lit}`@AAAA` (where {lit}`AAAA` is a SQL identifier)
+ - {lit}`$AAAA` for a parameter named {lit}`AAAA` (where {lit}`AAAA` is a TCL identifier)
+
+Parameters are numbered starting at 1.
+-/
 public def prepare (db : SQLite) (sql : String) : IO Stmt := do
   let stmt ← FFI.prepare db.connection sql
   return { db, stmt }
@@ -134,19 +163,43 @@ public def step (stmt : Stmt) : IO Bool := do
   let result ← FFI.step stmt.stmt
   return result != 0
 
+/--
+Extracts a string from (0-indexed) {name}`column`.
 
+This may perform type conversion of the underlying data, mutating it.
+-/
 public def columnText (stmt : Stmt) (column : Int32) : IO String :=
   FFI.columnText stmt.stmt column
 
+/--
+Extracts bytes from (0-indexed) {name}`column`.
+
+This may perform type conversion of the underlying data, mutating it.
+-/
 public def columnBlob (stmt : Stmt) (column : Int32) : IO ByteArray :=
   FFI.columnBlob stmt.stmt column
 
+/--
+Extracts a float from (0-indexed) {name}`column`.
+
+This may perform type conversion of the underlying data, mutating it.
+-/
 public def columnDouble (stmt : Stmt) (column : Int32) : IO Float :=
   FFI.columnDouble stmt.stmt column
 
+/--
+Extracts a 32-bit integer from (0-indexed) {name}`column`.
+
+This may perform type conversion of the underlying data, mutating it.
+-/
 public def columnInt (stmt : Stmt) (column : Int32) : IO Int32 :=
   FFI.columnInt stmt.stmt column
 
+/--
+Extracts a 64-bit integer from (0-indexed) {name}`column`.
+
+This may perform type conversion of the underlying data, mutating it.
+-/
 public def columnInt64 (stmt : Stmt) (column : Int32) : IO Int64 :=
   FFI.columnInt64 stmt.stmt column
 
@@ -229,6 +282,14 @@ public def columnDatabaseName (stmt : Stmt) (column : Int32) : IO String :=
 
 end Stmt
 
+/--
+Returns the number of columns in the result set returned by the prepared statement.
+
+If the result is 0, that means the prepared statement returns no data (for example an
+{lit}`UPDATE`). However, just because the result is positive does not mean that one or more rows of
+data will be returned. A {lit}`SELECT` statement will always have a positive column count; however,
+depending on the {lit}`WHERE` clause constraints and the table content, it might return no rows.
+-/
 public def Stmt.columnCount (stmt : Stmt) : UInt32 :=
   FFI.columnCount stmt.stmt
 
@@ -243,6 +304,7 @@ public inductive DataType where
   | null : DataType
 deriving Repr, BEq, Inhabited, Hashable, Inhabited, Ord
 
+/-- Returns {lean}`true` if the provided type is {name}`DataType.null`. -/
 public def DataType.isNull : DataType → Bool
   | .null => true
   | _ => false
@@ -312,21 +374,44 @@ Returns an empty string if the parameter is unnamed (uses {lit}`?` syntax).
 public def bindParameterName (stmt : Stmt) (index : Int32) : IO String :=
   FFI.bindParameterName stmt.stmt index
 
+/--
+Binds a string to the host parameter with the given {name}`index`. Parameter indices start at 1, and
+the index of a named parameter can be found via {name}`bindParameterIndex`.
+-/
 public def bindText (stmt : Stmt) (index : Int32) (text : String) : IO Unit :=
   FFI.bindText stmt.stmt index text
-
-public def bindDouble (stmt : Stmt) (index : Int32) (value : Float) : IO Unit :=
+/--
+Binds a floating-point number to the host parameter with the given {name}`index`. Parameter indices
+start at 1, and the index of a named parameter can be found via {name}`bindParameterIndex`.
+-/
+public def bindFloat (stmt : Stmt) (index : Int32) (value : Float) : IO Unit :=
   FFI.bindDouble stmt.stmt index value
 
-public def bindInt (stmt : Stmt) (index : Int32) (value : Int32) : IO Unit :=
+/--
+Binds a 32-bit integer to the host parameter with the given {name}`index`. Parameter indices start at 1, and
+the index of a named parameter can be found via {name}`bindParameterIndex`.
+-/
+public def bindInt32 (stmt : Stmt) (index : Int32) (value : Int32) : IO Unit :=
   FFI.bindInt stmt.stmt index value
 
+/--
+Binds a 64-bit integer to the host parameter with the given {name}`index`. Parameter indices start at 1, and
+the index of a named parameter can be found via {name}`bindParameterIndex`.
+-/
 public def bindInt64 (stmt : Stmt) (index : Int32) (value : Int64) : IO Unit :=
   FFI.bindInt64 stmt.stmt index value
 
+/--
+Binds a null value to the host parameter with the given {name}`index`. Parameter indices start at 1, and
+the index of a named parameter can be found via {name}`bindParameterIndex`.
+-/
 public def bindNull (stmt : Stmt) (index : Int32) : IO Unit :=
   FFI.bindNull stmt.stmt index
 
+/--
+Binds a byte array as a SQL BLOB to the host parameter with the given {name}`index`. Parameter
+indices start at 1, and the index of a named parameter can be found via {name}`bindParameterIndex`.
+-/
 public def bindBlob (stmt : Stmt) (index : Int32) (blob : ByteArray) : IO Unit :=
   FFI.bindBlob stmt.stmt index blob
 
