@@ -370,3 +370,20 @@ lean_obj_res leansqlite_last_insert_rowid(b_lean_obj_arg connection) {
   sqlite3_int64 rowid = sqlite3_last_insert_rowid(db);
   return lean_io_result_mk_ok(lean_box_uint64(rowid));
 }
+
+lean_obj_res leansqlite_changes(b_lean_obj_arg connection) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  sqlite3_int64 changes = sqlite3_changes64(db);
+  return lean_io_result_mk_ok(lean_box_uint64(changes));
+}
+
+lean_obj_res leansqlite_busy_timeout(b_lean_obj_arg connection, int32_t ms) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  int code = sqlite3_busy_timeout(db, ms);
+  if (code != SQLITE_OK) {
+    lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
+  } else {
+    return lean_io_result_mk_ok(lean_box(0));
+  }
+}

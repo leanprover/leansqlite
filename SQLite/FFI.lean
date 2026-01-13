@@ -107,3 +107,9 @@ opaque exec : @&Conn → String → IO Unit
 
 @[extern "leansqlite_last_insert_rowid"]
 opaque lastInsertRowId : @&Conn → IO Int64
+
+@[extern "leansqlite_changes"]
+opaque changes : @&Conn → IO Int64
+
+@[extern "leansqlite_busy_timeout"]
+opaque busyTimeout : @&Conn → Int32 → IO Unit

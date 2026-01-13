@@ -20,6 +20,25 @@ public def «open» (filename : System.FilePath) : IO SQLite := do
   let connection ← FFI.«open» filename.toString
   return { filename, connection }
 
+/--
+Sets the busy timeout for this database connection.
+
+When a table is locked, SQLite will retry the operation for up to {lit}`ms` milliseconds before
+returning {lit}`SQLITE_BUSY`. Setting this to 0 (the default) means operations fail immediately when
+encountering a lock.
+
+This is essential for concurrent access scenarios where multiple connections or processes may access
+the same database file. For example, setting a 5-second timeout allows operations to wait for locks
+to be released rather than failing immediately.
+
+This sets a busy handler that sleeps progressively longer between retries. For custom busy handler
+logic, use {lit}`sqlite3_busy_handler()` in the C API instead (not currently exposed).
+
+The timeout persists for the lifetime of the connection and can be changed at any time.
+-/
+public def busyTimeout (db : SQLite) (ms : Int32) : IO Unit :=
+  FFI.busyTimeout db.connection ms
+
 public structure Stmt where
   db : SQLite
   stmt : FFI.Stmt
@@ -167,6 +186,32 @@ file.
 -/
 public def lastInsertRowId (db : SQLite) : IO Int64 :=
   FFI.lastInsertRowId db.connection
+
+/--
+Returns the number of rows modified, inserted, or deleted by the most recently completed
+{lit}`INSERT`, {lit}`UPDATE`, or {lit}`DELETE` statement.
+
+This count **excludes**:
+- Rows modified by triggers
+- Rows modified by foreign key actions
+- Rows modified by {lit}`REPLACE` constraint resolution
+- Changes to views intercepted by {lit}`INSTEAD OF` triggers
+
+Executing any other type of SQL statement (including {lit}`SELECT` and DDL) does **not** modify
+the value returned by this function—it remains unchanged until the next data modification statement.
+
+Returns 0 if:
+- No rows were affected by the most recent data modification statement
+- No {lit}`INSERT`, {lit}`UPDATE`, or {lit}`DELETE` has been executed on this connection yet
+
+**Note**: This value is connection-specific. If a separate thread makes changes on the same
+database connection while this function runs, the value returned is unpredictable.
+
+Useful for verifying that a statement had the expected effect, such as checking whether an
+{lit}`UPDATE` or {lit}`DELETE` with a {lit}`WHERE` clause matched any rows.
+-/
+public def changes (db : SQLite) : IO Int64 :=
+  FFI.changes db.connection
 
 /--
 Transaction modes.

@@ -166,18 +166,18 @@ def testUnboundParameters (db : SQLite) : TestM Unit := do
 
 def testInvalidParameterIndex (db : SQLite) : TestM Unit := do
   let invalidBindStmt ← db.prepare "INSERT INTO products (id, name) VALUES (?, ?);"
-  match ← (invalidBindStmt.bindText 999 "test").toBaseIO with
-  | Except.ok _ =>
-      recordFailure "Should have failed but didn't"
-  | Except.error e =>
-      recordSuccess s!"Correctly rejected invalid index: {e}"
+  try
+    invalidBindStmt.bindText 999 "test"
+    recordFailure "Should have failed but didn't"
+  catch
+    | (e : IO.Error) => recordSuccess s!"Correctly rejected invalid index: {e}"
 
 def testInvalidSQL (db : SQLite) : TestM Unit := do
-  match ← (db.prepare "INVALID SQL SYNTAX;").toBaseIO with
-  | Except.ok _ =>
-      recordFailure "Should have failed but didn't"
-  | Except.error e =>
-      recordSuccess s!"Correctly failed to prepare: {e}"
+  try
+    discard <| db.prepare "INVALID SQL SYNTAX;"
+    recordFailure "Should have failed but didn't"
+  catch
+    | (e : IO.Error) => recordSuccess s!"Correctly failed to prepare: {e}"
 
 def testOutOfRangeColumn (db : SQLite) : TestM Unit := do
   let rangeStmt ← db.prepare "SELECT id FROM products LIMIT 1;"
@@ -187,11 +187,11 @@ def testOutOfRangeColumn (db : SQLite) : TestM Unit := do
   recordSuccess s!"Out-of-range column returned: {outOfRange} (SQLite returns 0 for invalid columns)"
 
 def testMultipleStatements (db : SQLite) : TestM Unit := do
-  match ← (db.prepare "SELECT 1; SELECT 2;").toBaseIO with
-  | Except.ok _ =>
-      recordFailure "Should have failed but didn't"
-  | Except.error e =>
-      recordSuccess s!"Correctly rejected multiple statements: {e}"
+  try
+    discard <| db.prepare "SELECT 1; SELECT 2;"
+    recordFailure "Should have failed but didn't"
+  catch
+    | (e : IO.Error) => recordSuccess s!"Correctly rejected multiple statements: {e}"
 
 def testStepAfterDone (db : SQLite) : TestM Unit := do
   let doneStmt ← db.prepare "SELECT 1;"
@@ -224,15 +224,18 @@ def testConstraintViolation (db : SQLite) : TestM Unit := do
   let _ ← clearStmt.step
   let insertOnce ← db.prepare "INSERT INTO unique_test (id, value) VALUES (1, 'first');"
   let _ ← insertOnce.step
-  match ← (db.prepare "INSERT INTO unique_test (id, value) VALUES (1, 'duplicate');").toBaseIO with
-  | Except.ok stmt =>
-    match ← stmt.step.toBaseIO with
-    | Except.ok _ =>
-        recordFailure "Duplicate insert should have failed"
-    | Except.error e =>
-        recordSuccess s!"Correctly rejected duplicate: {e}"
-  | Except.error e =>
-      recordSuccess s!"Failed at prepare: {e}"
+  try
+    let stmt ←
+      try
+        db.prepare "INSERT INTO unique_test (id, value) VALUES (1, 'duplicate');"
+      catch
+        | (e : IO.Error) =>
+          recordFailure s!"Failed at prepare: {e}"
+          return
+    discard stmt.step
+    recordFailure "Duplicate insert should have failed"
+  catch
+    | (e : IO.Error) => recordSuccess s!"Correctly rejected duplicate: {e}"
 
 def testErrorCases (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Error Cases ===" do
@@ -359,17 +362,16 @@ def testTransactions (db : SQLite) : TestM Unit :=
       recordFailure "No row found after rollback"
 
     -- Test transaction helper with success
-    match ← (db.transaction (do
-      let insertStmt2 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
-      insertStmt2.bindInt 1 2
-      insertStmt2.bindInt 2 250
-      let _ ← insertStmt2.step
-      pure ())
-    ).toBaseIO with
-    | Except.ok _ =>
-        recordSuccess "Transaction helper committed successfully"
-    | Except.error e =>
-        recordFailure s!"Transaction helper failed: {e}"
+    try
+      db.transaction do
+        let insertStmt2 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
+        insertStmt2.bindInt 1 2
+        insertStmt2.bindInt 2 250
+        let _ ← insertStmt2.step
+        pure ()
+      recordSuccess "Transaction helper committed successfully"
+    catch
+      | (e : IO.Error) => recordFailure s!"Transaction helper failed: {e}"
 
     -- Verify transaction helper committed
     let verifyStmt2 ← db.prepare "SELECT balance FROM accounts WHERE id = 2;"
@@ -384,18 +386,16 @@ def testTransactions (db : SQLite) : TestM Unit :=
       recordFailure "No row found after transaction helper"
 
     -- Test transaction helper with error (rollback)
-    match ← (db.transaction (do
-      let insertStmt3 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
-      insertStmt3.bindInt 1 3
-      insertStmt3.bindInt 2 300
-      let _ ← insertStmt3.step
-      throw (IO.userError "Simulated error")
-      pure ())
-    ).toBaseIO with
-    | Except.ok _ =>
-        recordFailure "Transaction helper should have failed"
-    | Except.error _ =>
-        recordSuccess "Transaction helper correctly caught error"
+    try
+      db.transaction do
+        let insertStmt3 ← db.prepare "INSERT INTO accounts (id, balance) VALUES (?, ?);"
+        insertStmt3.bindInt 1 3
+        insertStmt3.bindInt 2 300
+        let _ ← insertStmt3.step
+        throw (IO.userError "Simulated error")
+        pure ()
+      recordFailure "Transaction helper should have failed"
+    catch | (_ : IO.Error) => recordSuccess "Transaction helper correctly caught error"
 
     -- Verify transaction helper rolled back
     let verifyStmt3 ← db.prepare "SELECT COUNT(*) FROM accounts WHERE id = 3;"
@@ -459,6 +459,156 @@ def testLastInsertRowId (db : SQLite) : TestM Unit :=
     else
       recordFailure s!"Expected rowid 999, got {rowid3}"
 
+def testChanges (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Changes Count ===" do
+    -- Create and populate a test table
+    let createStmt ← db.prepare "CREATE TABLE IF NOT EXISTS employees (id INTEGER PRIMARY KEY, name TEXT, salary INTEGER, active INTEGER);"
+    let _ ← createStmt.step
+    recordSuccess "Created employees table"
+
+    -- Clear any existing data
+    let clearStmt ← db.prepare "DELETE FROM employees;"
+    let _ ← clearStmt.step
+
+    -- Test INSERT - should affect 1 row
+    let insertStmt ← db.prepare "INSERT INTO employees (name, salary, active) VALUES (?, ?, ?);"
+    insertStmt.bindText 1 "Alice"
+    insertStmt.bindInt 2 50000
+    insertStmt.bindInt 3 1
+    let _ ← insertStmt.step
+    let changes1 ← db.changes
+    if changes1 == 1 then
+      recordSuccess s!"INSERT affected {changes1} row"
+    else
+      recordFailure s!"Expected 1 row affected, got {changes1}"
+
+    -- Insert more rows for testing
+    insertStmt.reset
+    insertStmt.bindText 1 "Bob"
+    insertStmt.bindInt 2 60000
+    insertStmt.bindInt 3 1
+    let _ ← insertStmt.step
+
+    insertStmt.reset
+    insertStmt.bindText 1 "Charlie"
+    insertStmt.bindInt 2 55000
+    insertStmt.bindInt 3 1
+    let _ ← insertStmt.step
+
+    insertStmt.reset
+    insertStmt.bindText 1 "Diana"
+    insertStmt.bindInt 2 70000
+    insertStmt.bindInt 3 0
+    let _ ← insertStmt.step
+
+    -- Test UPDATE matching multiple rows
+    let updateStmt1 ← db.prepare "UPDATE employees SET salary = salary + 5000 WHERE active = 1;"
+    let _ ← updateStmt1.step
+    let changes2 ← db.changes
+    if changes2 == 3 then
+      recordSuccess s!"UPDATE affected {changes2} rows"
+    else
+      recordFailure s!"Expected 3 rows affected, got {changes2}"
+
+    -- Test UPDATE matching single row
+    let updateStmt2 ← db.prepare "UPDATE employees SET name = 'Robert' WHERE name = 'Bob';"
+    let _ ← updateStmt2.step
+    let changes3 ← db.changes
+    if changes3 == 1 then
+      recordSuccess s!"Single-row UPDATE affected {changes3} row"
+    else
+      recordFailure s!"Expected 1 row affected, got {changes3}"
+
+    -- Test UPDATE matching no rows
+    let updateStmt3 ← db.prepare "UPDATE employees SET salary = 100000 WHERE name = 'NonExistent';"
+    let _ ← updateStmt3.step
+    let changes4 ← db.changes
+    if changes4 == 0 then
+      recordSuccess s!"No-match UPDATE affected {changes4} rows"
+    else
+      recordFailure s!"Expected 0 rows affected, got {changes4}"
+
+    -- Test DELETE matching rows
+    let deleteStmt1 ← db.prepare "DELETE FROM employees WHERE active = 0;"
+    let _ ← deleteStmt1.step
+    let changes5 ← db.changes
+    if changes5 == 1 then
+      recordSuccess s!"DELETE affected {changes5} row"
+    else
+      recordFailure s!"Expected 1 row affected, got {changes5}"
+
+    -- Test DELETE matching no rows
+    let deleteStmt2 ← db.prepare "DELETE FROM employees WHERE salary > 1000000;"
+    let _ ← deleteStmt2.step
+    let changes6 ← db.changes
+    if changes6 == 0 then
+      recordSuccess s!"No-match DELETE affected {changes6} rows"
+    else
+      recordFailure s!"Expected 0 rows affected, got {changes6}"
+
+    -- Test SELECT returns 0 (not a data modification statement)
+    let selectStmt ← db.prepare "SELECT * FROM employees;"
+    let _ ← selectStmt.step
+    let changes7 ← db.changes
+    if changes7 == 0 then
+      recordSuccess s!"SELECT returned changes count of {changes7}"
+    else
+      recordFailure s!"Expected 0 changes for SELECT, got {changes7}"
+
+def testBusyTimeout (dbPath : System.FilePath) : TestM Unit :=
+  withHeader "=== Testing Busy Timeout ===" do
+    -- Test that setting busy timeout doesn't error
+    let db1 ← SQLite.open dbPath
+    db1.busyTimeout 5000
+    recordSuccess "Set busy timeout to 5000ms"
+
+    -- Test setting it to 0 (immediate failure on lock)
+    db1.busyTimeout 0
+    recordSuccess "Set busy timeout to 0ms (immediate failure)"
+
+    -- Test with concurrent access scenario
+    -- Open two connections to the same database
+    let db2 ← SQLite.open dbPath
+    db2.busyTimeout 100  -- Short timeout for testing
+
+    -- Create a test table on db1
+    let createStmt ← db1.prepare "CREATE TABLE IF NOT EXISTS timeout_test (id INTEGER PRIMARY KEY, value TEXT);"
+    let _ ← createStmt.step
+    let clearStmt ← db1.prepare "DELETE FROM timeout_test;"
+    let _ ← clearStmt.step
+
+    -- Start an exclusive transaction on db1 (locks the database)
+    db1.beginTransaction .exclusive
+
+    -- Insert data on db1 within the transaction
+    let insertStmt1 ← db1.prepare "INSERT INTO timeout_test (value) VALUES (?);"
+    insertStmt1.bindText 1 "locked"
+    let _ ← insertStmt1.step
+
+    -- Try to write from db2 - should fail due to lock even with timeout
+    -- (because db1 has an exclusive lock)
+    try
+      let insertStmt2 ← db2.prepare "INSERT INTO timeout_test (value) VALUES (?);"
+      insertStmt2.bindText 1 "blocked"
+      discard <| insertStmt2.step
+      recordFailure "Should have failed due to database lock"
+    catch
+      | (_ : IO.Error) => recordSuccess "Correctly failed due to database lock"
+
+    -- Commit the transaction on db1
+    db1.commit
+    recordSuccess "Committed transaction, releasing lock"
+
+    -- Now db2 should be able to write
+    try
+      let insertStmt3 ← db2.prepare "INSERT INTO timeout_test (value) VALUES (?);"
+      insertStmt3.bindText 1 "success"
+      discard <| insertStmt3.step
+      recordSuccess "Successfully wrote after lock released"
+    catch
+      | (e : IO.Error) =>
+        recordFailure s!"Should have succeeded after lock release: {e}"
+
 
 def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO Unit := IO.println) : IO UInt32 := do
   -- Set up monad layers
@@ -482,6 +632,8 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testResultIter db
     testTransactions db
     testLastInsertRowId db
+    testChanges db
+    testBusyTimeout dbPath
   ).run config).run headerRef).run initialStats
 
   -- Print summary
