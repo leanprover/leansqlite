@@ -36,8 +36,7 @@ jobs:
       matrix:
         lean-version:
           - toolchain-file
-          - leanprover/lean4:stable
-          - leanprover/lean4-nightly:nightly-2026-01-06
+          - leanprover/lean4:4.27.0-rc1
 
     name: test-large-files (lean ${{ matrix.lean-version }})
 
