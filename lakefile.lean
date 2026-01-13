@@ -6,6 +6,7 @@ package leansqlite where
   version := v!"0.1.0"
   keywords := #["sqlite", "database", "ffi"]
   license := "Apache-2.0"
+  leanOptions := #[⟨`experimental.module, true⟩]
 
 target sqlite.o pkg : FilePath := do
   let oFile := pkg.buildDir / "sqlite3.o"
