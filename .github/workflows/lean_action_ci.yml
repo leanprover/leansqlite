@@ -7,17 +7,18 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         lean-version:
           - toolchain-file
           - leanprover/lean4:4.27.0-rc1
           - leanprover/lean4-nightly:nightly-2026-01-12
 
-    name: build (lean ${{ matrix.lean-version }})
+    name: build (${{ matrix.os }}, lean ${{ matrix.lean-version }})
 
     steps:
       - uses: actions/checkout@v5
