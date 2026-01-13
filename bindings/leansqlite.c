@@ -131,7 +131,8 @@ lean_obj_res leansqlite_prepare(b_lean_obj_arg connection, lean_obj_arg sql) {
     lean_object *msg1 = lean_mk_string("Unprocessed SQL:");
     lean_object *msg2 = lean_mk_string(tail);
     lean_object *msg = lean_string_append(msg1, msg2);
-    lean_dec(msg1);
+    // lean_string_append borrows only its second argument, and consumes its first, so msg1 doesn't
+    // get decremented here.
     lean_dec(msg2);
     sqlite3_finalize(stmt);
     return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));

@@ -249,6 +249,8 @@ def testInterpolation (db : SQLite) : TestM Unit :=
   withHeader "=== Testing SQL Interpolation ===" do
     let treeCreate ← db sql!"CREATE TABLE IF NOT EXISTS trees (id INTEGER PRIMARY KEY, name TEXT, height INTEGER)"
     discard <| treeCreate.step
+    let treeEmpty ← db sql!"DELETE FROM trees;"
+    discard <| treeEmpty.step
     for (name, height) in [("pine", (20 : Int32)), ("poplar", 25)] do
       let treeInsert ← db sql!"INSERT INTO trees (id, name, height) VALUES (null, {name}, {height})"
       discard <| treeInsert.step
@@ -354,3 +356,18 @@ def main (args : List String) : IO UInt32 := do
       -- Create a temporary database file using Lean's API
       IO.FS.withTempFile fun _handle tempFile =>
         runTests tempFile hasVerbose
+
+/--
+info: === Testing SQLite Bindings ===
+
+=== Test Summary ===
+Successes: 22
+Failures:  0
+Total:     22
+
+✓ All tests passed!
+---
+info: true
+-/
+#guard_msgs in
+#eval do return (← runTests "foo.db" false) == 0
