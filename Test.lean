@@ -609,6 +609,92 @@ def testBusyTimeout (dbPath : System.FilePath) : TestM Unit :=
       | (e : IO.Error) =>
         recordFailure s!"Should have succeeded after lock release: {e}"
 
+def testClearBindings (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Clear Bindings ===" do
+    -- Create test table with 3 columns
+    let createStmt ← db.prepare "CREATE TABLE IF NOT EXISTS bindings_test (id INTEGER PRIMARY KEY, value1 INTEGER, value2 TEXT, value3 INTEGER);"
+    let _ ← createStmt.step
+    recordSuccess "Created bindings_test table"
+
+    -- Clear any existing data
+    let clearStmt ← db.prepare "DELETE FROM bindings_test;"
+    let _ ← clearStmt.step
+
+    -- Test 1: Demonstrate that bindings persist after reset
+    let insertStmt ← db.prepare "INSERT INTO bindings_test (value1, value2, value3) VALUES (?, ?, ?);"
+    insertStmt.bindInt 1 100
+    insertStmt.bindText 2 "first"
+    insertStmt.bindInt 3 300
+    let _ ← insertStmt.step
+
+    -- Reset without clearing bindings
+    insertStmt.reset
+    -- Only rebind first two parameters - third one should persist
+    insertStmt.bindInt 1 200
+    insertStmt.bindText 2 "second"
+    -- Don't bind parameter 3 - it should still be 300
+    let _ ← insertStmt.step
+
+    -- Verify the second row has value3=300 (persisted from first binding)
+    let selectStmt1 ← db.prepare "SELECT value3 FROM bindings_test WHERE value1 = 200;"
+    let hasRow1 ← selectStmt1.step
+    if hasRow1 then
+      let value3 ← selectStmt1.columnInt 0
+      if value3 == 300 then
+        recordSuccess "Bindings persist after reset (value3 = 300)"
+      else
+        recordFailure s!"Expected persisted value 300, got {value3}"
+    else
+      recordFailure "No row found for second insert"
+
+    -- Test 2: Use clearBindings to reset all parameters
+    insertStmt.reset
+    insertStmt.clearBindings
+    recordSuccess "Called clearBindings"
+
+    -- Now bind only first two parameters
+    insertStmt.bindInt 1 400
+    insertStmt.bindText 2 "third"
+    -- Don't bind parameter 3 - should be NULL now
+    let _ ← insertStmt.step
+
+    -- Verify the third row has NULL for value3
+    let selectStmt2 ← db.prepare "SELECT value3 FROM bindings_test WHERE value1 = 400;"
+    let hasRow2 ← selectStmt2.step
+    if hasRow2 then
+      let value3Type ← selectStmt2.columnType 0
+      if value3Type == .null then
+        recordSuccess "After clearBindings, unbound parameter is NULL"
+      else
+        let value3 ← selectStmt2.columnInt 0
+        recordFailure s!"Expected NULL, got {value3} with type {value3Type}"
+    else
+      recordFailure "No row found for third insert"
+
+    -- Test 3: Verify clearBindings can be called multiple times safely
+    insertStmt.reset
+    insertStmt.clearBindings
+    insertStmt.clearBindings  -- Call twice
+    recordSuccess "clearBindings can be called multiple times"
+
+    -- Bind and insert to verify statement still works
+    insertStmt.bindInt 1 500
+    insertStmt.bindText 2 "fourth"
+    insertStmt.bindInt 3 600
+    let _ ← insertStmt.step
+
+    let selectStmt3 ← db.prepare "SELECT value1, value3 FROM bindings_test WHERE value2 = 'fourth';"
+    let hasRow3 ← selectStmt3.step
+    if hasRow3 then
+      let v1 ← selectStmt3.columnInt 0
+      let v3 ← selectStmt3.columnInt 1
+      if v1 == 500 && v3 == 600 then
+        recordSuccess "Statement works correctly after multiple clearBindings"
+      else
+        recordFailure s!"Expected 500 and 600, got {v1} and {v3}"
+    else
+      recordFailure "No row found after multiple clearBindings"
+
 
 def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO Unit := IO.println) : IO UInt32 := do
   -- Set up monad layers
@@ -634,6 +720,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testLastInsertRowId db
     testChanges db
     testBusyTimeout dbPath
+    testClearBindings db
   ).run config).run headerRef).run initialStats
 
   -- Print summary

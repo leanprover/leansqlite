@@ -151,6 +151,16 @@ public def reset (stmt : Stmt) : IO Unit :=
   FFI.reset stmt.stmt
 
 /--
+Clears all bindings on a prepared statement, setting them back to {lit}`NULL`.
+
+This is useful after calling {name}`reset` because parameter bindings persist across resets. Prior to
+running {name}`reset` on a statement and and re-executing it with different parameters, all
+parameters should be re-bound; using {name}`clearBindings` ensures that no old values persist.
+-/
+public def clearBindings (stmt : Stmt) : IO Unit :=
+  FFI.clearBindings stmt.stmt
+
+/--
 Returns the type of a column in the result set.
 
 The type is only meaningful if no automatic type conversions have occurred for the value in

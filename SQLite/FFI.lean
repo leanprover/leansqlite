@@ -102,6 +102,9 @@ opaque step : @&Stmt → IO Int32
 @[extern "leansqlite_reset"]
 opaque reset : @&Stmt → IO Unit
 
+@[extern "leansqlite_clear_bindings"]
+opaque clearBindings : @&Stmt → IO Unit
+
 @[extern "leansqlite_exec"]
 opaque exec : @&Conn → String → IO Unit
 

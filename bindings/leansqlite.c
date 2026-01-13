@@ -387,3 +387,15 @@ lean_obj_res leansqlite_busy_timeout(b_lean_obj_arg connection, int32_t ms) {
     return lean_io_result_mk_ok(lean_box(0));
   }
 }
+
+lean_obj_res leansqlite_clear_bindings(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  int code = sqlite3_clear_bindings(stmt_ptr);
+  if (code != SQLITE_OK) {
+    sqlite3 *db = sqlite3_db_handle(stmt_ptr);
+    lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
+  } else {
+    return lean_io_result_mk_ok(lean_box(0));
+  }
+}
