@@ -20,16 +20,95 @@ public def «open» (filename : System.FilePath) : IO SQLite := do
   let connection ← FFI.«open» filename.toString
   return { filename, connection }
 
+public inductive Mode where
+  /-- Open in read-only mode. The database must already exist. -/
+  | readonly
+  /-- Open in read-write mode. The database must already exist. -/
+  | readWrite
+  /-- Open in read-write mode and create the database if it doesn't exist. -/
+  | readWriteCreate
+deriving Repr, BEq, Hashable, Ord, Inhabited
+
+def Mode.toInt : Mode → Int32
+  | .readonly => 0x00000001
+  | .readWrite => 0x00000002
+  | .readWriteCreate => 0x00000002 ||| 0x00000004
+
+public inductive Threading where
+  /--
+  The new database connection will use the "multi-thread" threading mode. This means that separate
+  threads are allowed to use SQLite at the same time, as long as each thread is using a different
+  database connection.
+  -/
+  | nomutex
+  /--
+  The new database connection will use the "serialized" threading mode. This means the multiple
+  threads can safely attempt to use the same database connection at the same time. (Mutexes will
+  block any actual concurrency, but in this mode there is no harm in trying.)
+  -/
+  | fullmutex
+deriving Repr, BEq, Hashable, Ord, Inhabited
+
+def Threading.toInt : Threading → Int32
+  | .nomutex => 0x00008000
+  | .fullmutex => 0x00010000
+
+public structure OpenFlags where
+  /--
+  Whether the file should be openend read-only or read-write, and whether it should be created if it
+  doesn't already exist.
+  -/
+  mode : Mode := .readWriteCreate
+  /-- Interpret the filename as a URI. -/
+  uri : Bool := false
+  /-- Open as an in-memory database. -/
+  memory : Bool := false
+  /-- Which threading model to use. -/
+  threading : Option Threading := none
+  -- The cache flag is intentionally omitted, because it only exists in SQLite for historical
+  -- compatibility and is discouraged from use.
+deriving Repr, BEq, Hashable, Ord, Inhabited
+
+@[inherit_doc Mode.readonly]
+public def OpenFlags.readonly : OpenFlags where
+  mode := .readonly
+
+@[inherit_doc Mode.readWrite]
+public def OpenFlags.readWrite : OpenFlags where
+  mode := .readWrite
+
+@[inherit_doc Mode.readWriteCreate]
+public def OpenFlags.readWriteCreate : OpenFlags where
+  mode := .readWriteCreate
+
+
+def OpenFlags.toInt (flags : OpenFlags) : Int32 :=
+  let { mode, uri, memory, threading } := flags
+  mode.toInt |||
+  if uri then 0x00000040 else 0 |||
+  if memory then 0x00000080 else 0 |||
+  (threading.map (·.toInt)).getD 0
+
+/--
+Opens a database with specific flags and an optional VFS name.
+
+This is a more flexible version of {name}`open` that allows fine-grained control over how the
+database is opened.
+
+The {name}`vfs` parameter specifies the name of the VFS module to use. Pass {lean}`none` (the default)
+to use the default VFS.
+-/
+public def openWith (filename : System.FilePath) (flags : OpenFlags) (vfs : Option String := none) : IO SQLite := do
+  let flagBits := flags.toInt
+  let connection ← FFI.openV2 filename.toString flagBits vfs
+  return { filename, connection }
+
 /--
 Sets the busy timeout for this database connection.
 
-When a table is locked, SQLite will retry the operation for up to {lit}`ms` milliseconds before
-returning {lit}`SQLITE_BUSY`. Setting this to 0 (the default) means operations fail immediately when
-encountering a lock.
-
-This is essential for concurrent access scenarios where multiple connections or processes may access
-the same database file. For example, setting a 5-second timeout allows operations to wait for locks
-to be released rather than failing immediately.
+When a table is locked, SQLite will retry the operation for up to {name}`ms` milliseconds before
+returning an error. Setting this to {lean (type := "Int32")}`0` (the default) means operations fail
+immediately when encountering a lock.
 
 This sets a busy handler that sleeps progressively longer between retries. For custom busy handler
 logic, use {lit}`sqlite3_busy_handler()` in the C API instead (not currently exposed).
@@ -50,6 +129,12 @@ public def prepare (db : SQLite) (sql : String) : IO Stmt := do
 
 namespace Stmt
 
+/-- Executes a statement. Returns {lean}`true` if a row is available, {lean}`false` if done. -/
+public def step (stmt : Stmt) : IO Bool := do
+  let result ← FFI.step stmt.stmt
+  return result != 0
+
+
 public def columnText (stmt : Stmt) (column : Int32) : IO String :=
   FFI.columnText stmt.stmt column
 
@@ -69,6 +154,79 @@ public def columnInt64 (stmt : Stmt) (column : Int32) : IO Int64 :=
 public def columnName (stmt : Stmt) (column : Int32) : IO String :=
   FFI.columnName stmt.stmt column
 
+/-- Returns the original SQL text of the prepared statement. -/
+public def sql (stmt : Stmt) : IO String :=
+  FFI.sql stmt.stmt
+
+/-- Returns the SQL text with bound parameters expanded (values filled in). -/
+public def expandedSql (stmt : Stmt) : IO String :=
+  FFI.expandedSql stmt.stmt
+
+/--
+Checks whether a prepared statement will only read from the database.
+
+Returns {name}`true` if the statement is read-only (e.g., {lit}`SELECT`), {name}`false` if it
+might modify the database (e.g., {lit}`INSERT`, {lit}`UPDATE`, {lit}`DELETE`).
+
+{lit}`BEGIN`, {lit}`COMMIT`, and {lit}`ROLLBACK` are considered read-only by this function.
+-/
+public def isReadonly (stmt : Stmt) : IO Bool :=
+  FFI.stmtReadonly stmt.stmt
+
+/--
+Checks whether a statement has been stepped at least once and has not been reset.
+
+Returns {name}`true` if {lean}`stmt` has a current row or has been stepped (even if it is done), or
+{name}`false` if it hasn't been stepped yet or has been reset.
+
+Useful to determine if you need to call {lit}`reset` before re-executing a statement with different
+parameters.
+-/
+public def isBusy (stmt : Stmt) : IO Bool :=
+  FFI.stmtBusy stmt.stmt
+
+/--
+Returns the number of columns in the current result row.
+
+Unlike `Stmt.columnCount` which returns the total number of columns the statement _could_ return,
+this returns 0 if no row is currently available (before the first {name}`step` or after {name}`step`
+returns {name}`false`).
+
+Returns the actual column count if a row is available.
+-/
+public def dataCount (stmt : Stmt) : IO UInt32 :=
+  FFI.dataCount stmt.stmt
+
+/--
+Returns the name of the table from which a result column originates.
+
+Returns an empty string if metadata is not available (e.g. if the column is an expression). This
+only works for columns that directly reference a table column, not for computed expressions.
+-/
+public def columnTableName (stmt : Stmt) (column : Int32) : IO String :=
+  FFI.columnTableName stmt.stmt column
+
+/--
+Returns the original column name from the table definition.
+
+Returns an empty string if metadata is not available (e.g. if the column is an expression).
+For aliased columns (e.g., {lit}`SELECT name AS user_name`), this returns the original
+column name ({lit}`name`), while {name}`columnName` returns the alias ({lit}`user_name`).
+-/
+public def columnOriginName (stmt : Stmt) (column : Int32) : IO String :=
+  FFI.columnOriginName stmt.stmt column
+
+/--
+Returns the name of the database from which a result column originates.
+The database name is typically {lit}`"main"` for the primary database, {lit}`"temp"` for
+temporary tables, or the name specified in an {lit}`ATTACH DATABASE` statement.
+
+Returns an empty string if metadata is not available (e.g. if the column is an expression).
+This only works for columns that directly reference a table column, not for computed expressions.
+-/
+public def columnDatabaseName (stmt : Stmt) (column : Int32) : IO String :=
+  FFI.columnDatabaseName stmt.stmt column
+
 end Stmt
 
 public def Stmt.columnCount (stmt : Stmt) : UInt32 :=
@@ -83,7 +241,7 @@ public inductive DataType where
   | text : DataType
   | blob : DataType
   | null : DataType
-deriving Repr, BEq, Inhabited
+deriving Repr, BEq, Inhabited, Hashable, Inhabited, Ord
 
 public def DataType.isNull : DataType → Bool
   | .null => true
@@ -97,7 +255,7 @@ instance : ToString DataType where
     | .blob => "BLOB"
     | .null => "NULL"
 
-/-- Converts SQLite type code to DataType -/
+/-- Converts SQLite type code to {name}`DataType` -/
 def DataType.fromCode (code : Int32) : DataType :=
   match code with
   | 1 => DataType.integer
@@ -131,6 +289,29 @@ end Value
 
 namespace Stmt
 
+/-- Returns the number of SQL parameters in the prepared statement. -/
+public def bindParameterCount (stmt : Stmt) : IO UInt32 :=
+  FFI.bindParameterCount stmt.stmt
+
+/--
+Returns the index of a named parameter.
+
+Named parameters can use {lit}`:name`, {lit}`@name`, or {lit}`$name` syntax.
+Returns 0 if the name is not found.
+
+Parameter indices are 1-based.
+-/
+public def bindParameterIndex (stmt : Stmt) (param : String) : Int32 :=
+  FFI.bindParameterIndex stmt.stmt param
+
+/--
+Returns the name of a parameter at the given index (1-based).
+
+Returns an empty string if the parameter is unnamed (uses {lit}`?` syntax).
+-/
+public def bindParameterName (stmt : Stmt) (index : Int32) : IO String :=
+  FFI.bindParameterName stmt.stmt index
+
 public def bindText (stmt : Stmt) (index : Int32) (text : String) : IO Unit :=
   FFI.bindText stmt.stmt index text
 
@@ -148,11 +329,6 @@ public def bindNull (stmt : Stmt) (index : Int32) : IO Unit :=
 
 public def bindBlob (stmt : Stmt) (index : Int32) (blob : ByteArray) : IO Unit :=
   FFI.bindBlob stmt.stmt index blob
-
-/-- Executes a statement. Returns true if a row is available, false if done. -/
-public def step (stmt : Stmt) : IO Bool := do
-  let result ← FFI.step stmt.stmt
-  return result != 0
 
 /--
 Executes a statement, disregarding the availability of results.
@@ -201,8 +377,6 @@ end Stmt
 
 /--
 Executes SQL that doesn't return data.
-
-Useful for DDL and transaction control.
 -/
 public def exec (db : SQLite) (sql : String) : IO Unit :=
   FFI.exec db.connection sql
@@ -227,27 +401,104 @@ public def lastInsertRowId (db : SQLite) : IO Int64 :=
 Returns the number of rows modified, inserted, or deleted by the most recently completed
 {lit}`INSERT`, {lit}`UPDATE`, or {lit}`DELETE` statement.
 
-This count **excludes**:
+This count excludes:
 - Rows modified by triggers
 - Rows modified by foreign key actions
 - Rows modified by {lit}`REPLACE` constraint resolution
 - Changes to views intercepted by {lit}`INSTEAD OF` triggers
 
-Executing any other type of SQL statement (including {lit}`SELECT` and DDL) does **not** modify
-the value returned by this function—it remains unchanged until the next data modification statement.
+Executing any other type of SQL statement (including {lit}`SELECT` and DDL) does not modify
+the value returned by this function. It remains unchanged until the next data modification statement.
 
 Returns 0 if:
 - No rows were affected by the most recent data modification statement
 - No {lit}`INSERT`, {lit}`UPDATE`, or {lit}`DELETE` has been executed on this connection yet
 
-**Note**: This value is connection-specific. If a separate thread makes changes on the same
+*Warning*: This value is connection-specific. If a separate thread makes changes on the same
 database connection while this function runs, the value returned is unpredictable.
-
-Useful for verifying that a statement had the expected effect, such as checking whether an
-{lit}`UPDATE` or {lit}`DELETE` with a {lit}`WHERE` clause matched any rows.
 -/
 public def changes (db : SQLite) : IO Int64 :=
   FFI.changes db.connection
+
+/--
+Returns the total number of rows inserted, modified, or deleted since the database connection was opened.
+
+Unlike {name}`changes`, which returns the count for the most recent statement, this returns the
+cumulative total across all {lit}`INSERT`, {lit}`UPDATE`, and {lit}`DELETE` statements executed
+on this connection.
+
+This count excludes the same operations as {name}`changes`:
+- Rows modified by triggers
+- Rows modified by foreign key actions
+- Rows modified by {lit}`REPLACE` constraint resolution
+- Changes to views intercepted by {lit}`INSTEAD OF` triggers
+-/
+public def totalChanges (db : SQLite) : IO Int64 :=
+  FFI.totalChanges db.connection
+
+/--
+Checks whether the database connection is in autocommit mode.
+
+Returns {name}`true` if the connection is *not* in a transaction (autocommit mode is on). Returns
+{name}`false` if the connection is currently in a transaction (autocommit mode is off).
+
+This is useful for checking transaction state before performing operations that require or prohibit
+being in a transaction.
+
+Autocommit mode is the default state. It is disabled when a transaction begins, and re-enabled on
+commit or rollback.
+-/
+public def inAutocommit (db : SQLite) : IO Bool :=
+  FFI.getAutocommit db.connection
+
+/--
+Checks whether the database connection is currently in a transaction.
+
+Returns {name}`true` if in a transaction, {name}`false` if not.
+
+This is the inverse of {name}`inAutocommit`.
+-/
+public def inTransaction (db : SQLite) : IO Bool := do
+  return !(← db.inAutocommit)
+
+/--
+Returns the filename of a database attached to this connection.
+
+The {name}`dbName` parameter is typically:
+- {lit}`"main"` - The primary database file
+- {lit}`"temp"` - The temporary database (used for TEMP tables)
+- Any name used in an {lit}`ATTACH DATABASE` statement
+
+Returns {lean (type := "Option System.FilePath")}`none` if the database name is not found.
+
+For in-memory databases ({lit}`:memory:`), this returns an empty string.
+For temporary databases, the actual filename may be a system-generated path.
+-/
+public def dbFilename (db : SQLite) (dbName : String := "main") : IO (Option System.FilePath) := do
+  let name ← FFI.dbFilename db.connection dbName
+  return if name.isEmpty then none else some name
+
+/--
+Database access mode returned by {lit}`dbReadonly`.
+-/
+public inductive AccessMode where
+  /-- The database is read-only. -/
+  | readWrite : AccessMode
+  /-- The database is read-write. -/
+  | readOnly : AccessMode
+deriving Repr, BEq, Hashable, DecidableEq, Inhabited, Ord
+
+/--
+Checks whether a database is opened in read-only mode.
+
+The {name}`dbName` parameter is typically {lit}`"main"`, {lit}`"temp"`, or an attachment name.
+
+-/
+public def dbReadonly (db : SQLite) (dbName : String := "main") : IO (Option AccessMode) := do
+  return match (← FFI.dbReadonly db.connection dbName) with
+    | 1 => some .readOnly
+    | 0 => some .readWrite
+    | _ => none
 
 /--
 Transaction modes.
@@ -259,7 +510,7 @@ public inductive TransactionMode where
   | immediate : TransactionMode
   /-- Exclusive lock acquired immediately -/
   | exclusive : TransactionMode
-deriving Repr, BEq
+deriving Repr, BEq, Hashable, Inhabited, Ord
 
 /-- Begins a transaction with the specified mode -/
 public def beginTransaction (db : SQLite) (mode : TransactionMode := .deferred) : IO Unit :=

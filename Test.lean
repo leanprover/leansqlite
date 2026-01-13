@@ -647,6 +647,549 @@ def testBusyTimeout (dbPath : System.FilePath) : TestM Unit :=
       | (e : IO.Error) =>
         recordFailure s!"Should have succeeded after lock release: {e}"
 
+def testSqlIntrospection (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing SQL Introspection ===" do
+    -- Test basic SQL text retrieval
+    let selectStmt ← db.prepare "SELECT id, name FROM products WHERE id > ?;"
+    let sqlText ← selectStmt.sql
+    expect (sqlText == "SELECT id, name FROM products WHERE id > ?;")
+      s!"Expected original SQL, got: {sqlText}"
+    recordSuccess s!"Original SQL retrieved: {sqlText}"
+
+    -- Test expanded SQL without bindings
+    let expandedBefore ← selectStmt.expandedSql
+    verbose do report s!"  Expanded SQL before binding: {expandedBefore}"
+    recordSuccess "Expanded SQL retrieved before binding"
+
+    -- Bind a parameter and check expanded SQL
+    selectStmt.bindInt 1 100
+    let expandedAfter ← selectStmt.expandedSql
+    verbose do report s!"  Expanded SQL after binding: {expandedAfter}"
+    expect (expandedAfter.contains "100") s!"Expected expanded SQL to contain '100', got: {expandedAfter}"
+    recordSuccess "Expanded SQL shows bound parameter"
+
+    -- Test with complex SQL
+    let complexStmt ← db.prepare "INSERT INTO products (id, name, price) VALUES (?, ?, ?);"
+    let complexSql ← complexStmt.sql
+    expect (complexSql.contains "INSERT") s!"Expected SQL to contain INSERT"
+    recordSuccess "Complex SQL text retrieved correctly"
+
+def testParameterInfo (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Parameter Information ===" do
+    -- Test parameter count with positional parameters
+    let stmt1 ← db.prepare "SELECT * FROM products WHERE id = ? AND name = ? AND price > ?;"
+    let count1 ← stmt1.bindParameterCount
+    expect (count1 == 3) s!"Expected 3 parameters, got {count1}"
+    recordSuccess s!"Parameter count correct: {count1}"
+
+    -- Test with no parameters
+    let stmt2 ← db.prepare "SELECT * FROM products;"
+    let count2 ← stmt2.bindParameterCount
+    expect (count2 == 0) s!"Expected 0 parameters, got {count2}"
+    recordSuccess "Zero parameters detected correctly"
+
+    -- Test named parameters with :name syntax
+    let stmt3 ← db.prepare "SELECT * FROM products WHERE id = :product_id AND name = :product_name;"
+    let count3 ← stmt3.bindParameterCount
+    expect (count3 == 2) s!"Expected 2 named parameters, got {count3}"
+    recordSuccess "Named parameters counted correctly"
+
+    -- Test bindParameterIndex
+    let idx1 := stmt3.bindParameterIndex ":product_id"
+    expect (idx1 == 1) s!"Expected index 1 for :product_id, got {idx1}"
+    recordSuccess s!"Parameter :product_id at index {idx1}"
+
+    let idx2 := stmt3.bindParameterIndex ":product_name"
+    expect (idx2 == 2) s!"Expected index 2 for :product_name, got {idx2}"
+    recordSuccess s!"Parameter :product_name at index {idx2}"
+
+    -- Test with non-existent parameter name
+    let idxNone := stmt3.bindParameterIndex ":nonexistent"
+    expect (idxNone == 0) s!"Expected index 0 for nonexistent parameter, got {idxNone}"
+    recordSuccess "Nonexistent parameter returns index 0"
+
+    -- Test bindParameterName
+    let name1 ← stmt3.bindParameterName 1
+    expect (name1 == ":product_id") s!"Expected ':product_id', got '{name1}'"
+    recordSuccess s!"Parameter name at index 1: {name1}"
+
+    let name2 ← stmt3.bindParameterName 2
+    expect (name2 == ":product_name") s!"Expected ':product_name', got '{name2}'"
+    recordSuccess s!"Parameter name at index 2: {name2}"
+
+def testParameterVariants (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Parameter Syntax Variants ===" do
+    -- Test $name syntax
+    let stmt1 ← db.prepare "SELECT * FROM products WHERE id = $id;"
+    let count1 ← stmt1.bindParameterCount
+    expect (count1 == 1) s!"Expected 1 parameter with $id, got {count1}"
+    let name1 ← stmt1.bindParameterName 1
+    expect (name1 == "$id") s!"Expected '$id', got '{name1}'"
+    let idx1 := stmt1.bindParameterIndex "$id"
+    expect (idx1 == 1) s!"Expected index 1 for $id, got {idx1}"
+    recordSuccess "$ parameter syntax works correctly"
+
+    -- Test @name syntax
+    let stmt2 ← db.prepare "SELECT * FROM products WHERE name = @name;"
+    let count2 ← stmt2.bindParameterCount
+    expect (count2 == 1) s!"Expected 1 parameter with @name, got {count2}"
+    let name2 ← stmt2.bindParameterName 1
+    expect (name2 == "@name") s!"Expected '@name', got '{name2}'"
+    let idx2 := stmt2.bindParameterIndex "@name"
+    expect (idx2 == 1) s!"Expected index 1 for @name, got {idx2}"
+    recordSuccess "@ parameter syntax works correctly"
+
+    -- Test mixed parameter types
+    let stmt3 ← db.prepare "SELECT * FROM products WHERE id = ? AND name = :name AND price > $price;"
+    let count3 ← stmt3.bindParameterCount
+    expect (count3 == 3) s!"Expected 3 mixed parameters, got {count3}"
+
+    let name_idx := stmt3.bindParameterIndex ":name"
+    expect (name_idx == 2) s!"Expected index 2 for :name in mixed params, got {name_idx}"
+
+    let price_idx := stmt3.bindParameterIndex "$price"
+    expect (price_idx == 3) s!"Expected index 3 for $price in mixed params, got {price_idx}"
+
+    recordSuccess "Mixed parameter syntaxes work correctly"
+
+    -- Test unnamed parameters (?)
+    let stmt4 ← db.prepare "INSERT INTO products (id, name) VALUES (?, ?);"
+    let unnamed1 ← stmt4.bindParameterName 1
+    expect (unnamed1 == "") s!"Expected empty string for unnamed param, got '{unnamed1}'"
+    let unnamed2 ← stmt4.bindParameterName 2
+    expect (unnamed2 == "") s!"Expected empty string for unnamed param, got '{unnamed2}'"
+    recordSuccess "Unnamed parameters return empty string"
+
+def testAutocommit (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Autocommit and Transaction State ===" do
+    -- Initially should be in autocommit mode (no transaction)
+    let autocommit1 ← db.inAutocommit
+    expect autocommit1 s!"Expected to be in autocommit mode initially"
+    recordSuccess "Initially in autocommit mode"
+
+    let inTxn1 ← db.inTransaction
+    expect (!inTxn1) s!"Expected NOT to be in transaction initially"
+    recordSuccess "Not in transaction initially"
+
+    -- Begin a transaction - should disable autocommit
+    db.beginTransaction
+    let autocommit2 ← db.inAutocommit
+    expect (!autocommit2) s!"Expected autocommit to be off after BEGIN"
+    recordSuccess "Autocommit disabled after BEGIN TRANSACTION"
+
+    let inTxn2 ← db.inTransaction
+    expect inTxn2 s!"Expected to be in transaction after BEGIN"
+    recordSuccess "In transaction after BEGIN"
+
+    -- Make a change in the transaction
+    db.exec "CREATE TABLE IF NOT EXISTS autocommit_test (id INTEGER, value TEXT);"
+    db.exec "DELETE FROM autocommit_test;"
+    db.exec "INSERT INTO autocommit_test (id, value) VALUES (1, 'test');"
+
+    -- Still in transaction
+    let inTxn3 ← db.inTransaction
+    expect inTxn3 s!"Expected to still be in transaction"
+    recordSuccess "Still in transaction after INSERT"
+
+    -- Commit - should re-enable autocommit
+    db.commit
+    let autocommit3 ← db.inAutocommit
+    expect autocommit3 s!"Expected autocommit to be on after COMMIT"
+    recordSuccess "Autocommit re-enabled after COMMIT"
+
+    let inTxn4 ← db.inTransaction
+    expect (!inTxn4) s!"Expected NOT to be in transaction after COMMIT"
+    recordSuccess "Not in transaction after COMMIT"
+
+    -- Test with rollback
+    db.beginTransaction
+    let inTxn5 ← db.inTransaction
+    expect inTxn5 s!"Expected to be in transaction after second BEGIN"
+
+    db.exec "INSERT INTO autocommit_test (id, value) VALUES (2, 'rollback');"
+
+    db.rollback
+    let autocommit4 ← db.inAutocommit
+    expect autocommit4 s!"Expected autocommit to be on after ROLLBACK"
+    recordSuccess "Autocommit re-enabled after ROLLBACK"
+
+    let inTxn6 ← db.inTransaction
+    expect (!inTxn6) s!"Expected NOT to be in transaction after ROLLBACK"
+    recordSuccess "Not in transaction after ROLLBACK"
+
+    -- Test with transaction helper
+    let beforeHelper ← db.inAutocommit
+    expect beforeHelper s!"Expected autocommit before transaction helper"
+
+    -- Can't check state during transaction since db.transaction uses IO, not TestM
+    -- But we can insert data and verify it committed
+    db.transaction do
+      db.exec "INSERT INTO autocommit_test (id, value) VALUES (3, 'helper');"
+
+    let afterHelper ← db.inAutocommit
+    expect afterHelper s!"Expected autocommit after transaction helper"
+
+    -- Verify the data was committed
+    let verifyStmt ← db.prepare "SELECT COUNT(*) FROM autocommit_test WHERE id = 3;"
+    verifyStmt.exec
+    let count ← verifyStmt.columnInt 0
+    expect (count == 1) s!"Expected 1 row with id=3, got {count}"
+
+    recordSuccess "Autocommit state correct with transaction helper"
+
+def testDbFilename (dbPath : System.FilePath) : TestM Unit :=
+  withHeader "=== Testing Database Filename ===" do
+    -- Open a file-based database
+    let db ← SQLite.open dbPath
+
+    -- Test getting the main database filename
+    if let some mainFilename ← db.dbFilename "main" then
+      -- The filename should match our opened database path. Because /var is a symlink to /private/var
+      -- on MacOS, and that's where temp files as used for this test are saved, we compare only the
+      -- filename part here.
+      expect (mainFilename.fileName == dbPath.fileName)
+        s!"Expected main db filename to be '{dbPath}', got '{mainFilename}'"
+      recordSuccess s!"Main database filename: {mainFilename}"
+    else
+      recordFailure "Expected main database filename to be available"
+
+    -- Test with default parameter (should default to "main")
+    if let some defaultFilename ← db.dbFilename then
+      expect (defaultFilename.fileName == dbPath.fileName)
+        s!"Expected default filename to match main, got '{defaultFilename}'"
+      recordSuccess "Default dbName parameter works correctly"
+    else
+      recordFailure "Expected default database filename to be available"
+
+    -- Test with non-existent database name
+    let nonExistent ← db.dbFilename "nonexistent"
+    expect nonExistent.isNone
+      s!"Expected none for nonexistent database, got '{nonExistent}'"
+    recordSuccess "Non-existent database name returns none"
+
+    -- Test with in-memory database
+    let memDb ← SQLite.open ":memory:"
+    let memFilename ← memDb.dbFilename "main"
+    -- In-memory databases don't have an associated file, so this returns none
+    expect (memFilename == none)
+      s!"Expected none for in-memory database, got '{memFilename}'"
+    recordSuccess "In-memory database returns none"
+
+def testTotalChanges (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Total Changes ===" do
+    -- Get initial total changes
+    let initialTotal ← db.totalChanges
+    verbose do report s!"  Initial total changes: {initialTotal}"
+
+    -- Make some changes
+    db.exec "CREATE TABLE IF NOT EXISTS total_test (id INTEGER, value TEXT);"
+    db.exec "DELETE FROM total_test;"
+
+    db.exec "INSERT INTO total_test (id, value) VALUES (1, 'a');"
+    db.exec "INSERT INTO total_test (id, value) VALUES (2, 'b');"
+    db.exec "INSERT INTO total_test (id, value) VALUES (3, 'c');"
+
+    let afterInserts ← db.totalChanges
+    let insertDiff := afterInserts - initialTotal
+    expect (insertDiff == 3) s!"Expected 3 inserts, got {insertDiff}"
+    recordSuccess s!"Total changes after 3 inserts: {afterInserts} (delta: {insertDiff})"
+
+    -- Update some rows
+    db.exec "UPDATE total_test SET value = 'x' WHERE id <= 2;"
+    let afterUpdates ← db.totalChanges
+    let updateDiff := afterUpdates - afterInserts
+    expect (updateDiff == 2) s!"Expected 2 updates, got {updateDiff}"
+    recordSuccess s!"Total changes after 2 updates: {afterUpdates} (delta: {updateDiff})"
+
+    -- Delete a row
+    db.exec "DELETE FROM total_test WHERE id = 1;"
+    let afterDelete ← db.totalChanges
+    let deleteDiff := afterDelete - afterUpdates
+    expect (deleteDiff == 1) s!"Expected 1 delete, got {deleteDiff}"
+    recordSuccess s!"Total changes after 1 delete: {afterDelete} (delta: {deleteDiff})"
+
+    -- Verify totalChanges accumulates (unlike changes)
+    let finalTotal ← db.totalChanges
+    let totalDiff := finalTotal - initialTotal
+    expect (totalDiff == 6) s!"Expected total of 6 changes (3+2+1), got {totalDiff}"
+    recordSuccess s!"Cumulative total changes verified: {totalDiff}"
+
+def testStmtReadonly (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Statement Readonly ===" do
+    -- Test SELECT (read-only)
+    let selectStmt ← db.prepare "SELECT * FROM products;"
+    let selectReadonly ← selectStmt.isReadonly
+    expect selectReadonly s!"Expected SELECT to be readonly"
+    recordSuccess "SELECT statement is read-only"
+
+    -- Test INSERT (not read-only)
+    let insertStmt ← db.prepare "INSERT INTO products (id, name) VALUES (?, ?);"
+    let insertReadonly ← insertStmt.isReadonly
+    expect (!insertReadonly) s!"Expected INSERT to NOT be readonly"
+    recordSuccess "INSERT statement is not read-only"
+
+    -- Test UPDATE (not read-only)
+    let updateStmt ← db.prepare "UPDATE products SET name = ? WHERE id = ?;"
+    let updateReadonly ← updateStmt.isReadonly
+    expect (!updateReadonly) s!"Expected UPDATE to NOT be readonly"
+    recordSuccess "UPDATE statement is not read-only"
+
+    -- Test DELETE (not read-only)
+    let deleteStmt ← db.prepare "DELETE FROM products WHERE id = ?;"
+    let deleteReadonly ← deleteStmt.isReadonly
+    expect (!deleteReadonly) s!"Expected DELETE to NOT be readonly"
+    recordSuccess "DELETE statement is not read-only"
+
+    -- Test BEGIN (read-only per SQLite definition)
+    let beginStmt ← db.prepare "BEGIN TRANSACTION;"
+    let beginReadonly ← beginStmt.isReadonly
+    expect beginReadonly s!"Expected BEGIN to be readonly"
+    recordSuccess "BEGIN TRANSACTION is considered read-only"
+
+    -- Test CREATE (not read-only)
+    let createStmt ← db.prepare "CREATE TABLE IF NOT EXISTS readonly_test (id INTEGER);"
+    let createReadonly ← createStmt.isReadonly
+    expect (!createReadonly) s!"Expected CREATE to NOT be readonly"
+    recordSuccess "CREATE TABLE statement is not read-only"
+
+def testStmtBusy (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Statement Busy ===" do
+    let stmt ← db.prepare "SELECT id, name FROM products LIMIT 2;"
+
+    -- Before step - should not be busy
+    let busyBefore ← stmt.isBusy
+    expect (!busyBefore) s!"Expected statement to NOT be busy before step"
+    recordSuccess "Statement not busy before first step"
+
+    -- After first step - should be busy
+    let hasRow1 ← stmt.step
+    expect hasRow1 s!"Expected first row"
+    let busyAfterStep ← stmt.isBusy
+    expect busyAfterStep s!"Expected statement to be busy after step"
+    recordSuccess "Statement busy after first step"
+
+    -- After second step - still busy
+    stmt.exec
+    let busyAfterStep2 ← stmt.isBusy
+    expect busyAfterStep2 s!"Expected statement to still be busy"
+    recordSuccess "Statement still busy after second step"
+
+    -- Step one more time to get DONE status (LIMIT 2, so third step returns false)
+    let hasRow3 ← stmt.step
+    expect (!hasRow3) s!"Expected no more rows (LIMIT 2)"
+
+    -- Statement should NOT be busy after reaching DONE
+    -- sqlite3_stmt_busy returns false once SQLITE_DONE is reached
+    let busyAfterDone ← stmt.isBusy
+    expect (!busyAfterDone) s!"Expected statement to NOT be busy after done"
+    recordSuccess "Statement not busy after stepping to DONE"
+
+    -- After reset - should not be busy
+    stmt.reset
+    let busyAfterReset ← stmt.isBusy
+    expect (!busyAfterReset) s!"Expected statement to NOT be busy after reset"
+    recordSuccess "Statement not busy after reset"
+
+def testDataCount (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Data Count ===" do
+    let stmt ← db.prepare "SELECT id, name, price FROM products LIMIT 1;"
+
+    -- Before step - data count should be 0
+    let countBefore ← stmt.dataCount
+    expect (countBefore == 0) s!"Expected data count 0 before step, got {countBefore}"
+    recordSuccess "Data count is 0 before first step"
+
+    -- columnCount should still return the total columns
+    let colCount := stmt.columnCount
+    expect (colCount == 3) s!"Expected column count 3, got {colCount}"
+    recordSuccess s!"Column count is {colCount} (always available)"
+
+    -- After step with row - data count should match column count
+    let hasRow ← stmt.step
+    if hasRow then
+      let countAfterStep ← stmt.dataCount
+      expect (countAfterStep == 3) s!"Expected data count 3 after step, got {countAfterStep}"
+      recordSuccess "Data count matches column count when row available"
+
+    -- After stepping through all rows - data count should be 0 again
+    let mut hasMore ← stmt.step
+    while hasMore do
+      hasMore ← stmt.step
+
+    let countAfterDone ← stmt.dataCount
+    expect (countAfterDone == 0) s!"Expected data count 0 after done, got {countAfterDone}"
+    recordSuccess "Data count is 0 after stepping through all rows"
+
+    -- Column count should still be available
+    let colCountAfter := stmt.columnCount
+    expect (colCountAfter == 3) s!"Expected column count still 3, got {colCountAfter}"
+    recordSuccess "Column count remains available even when no current row"
+
+def testDbReadonly (dbPath : System.FilePath) : TestM Unit :=
+  withHeader "=== Testing Database Readonly ===" do
+    -- Open a read-write database
+    let db ← SQLite.open dbPath
+
+    -- Check main database is read-write
+    let mainMode ← db.dbReadonly "main"
+    expect (mainMode.isEqSome .readWrite)
+      s!"Expected main database to be read-write, got {repr mainMode}"
+    recordSuccess "Main database is read-write"
+
+    -- Test default parameter
+    let defaultMode ← db.dbReadonly
+    expect (defaultMode.isEqSome .readWrite)
+      s!"Expected default (main) to be read-write"
+    recordSuccess "Default dbName parameter works correctly"
+
+    -- Test non-existent database
+    let nonExistent ← db.dbReadonly "nonexistent"
+    expect nonExistent.isNone
+      s!"Expected nonexistent database mode, got {repr nonExistent}"
+    recordSuccess "Non-existent database returns notFound"
+
+def testOpenWith (dbPath : System.FilePath) : TestM Unit :=
+  withHeader "=== Testing sqlite3_open_v2 (openWith) ===" do
+    -- First create a database with some data
+    do
+      let db ← SQLite.open dbPath
+      db.exec "CREATE TABLE IF NOT EXISTS open_test (id INTEGER, value TEXT);"
+      db.exec "INSERT INTO open_test VALUES (1, 'test');"
+      recordSuccess "Created test database with data"
+
+    -- Test opening in read-only mode
+    let readOnlyDb ← SQLite.openWith dbPath { mode := .readonly }
+    let mode ← readOnlyDb.dbReadonly
+    expect (mode.isEqSome .readOnly)
+      s!"Expected read-only mode, got {repr mode}"
+    recordSuccess "Opened database in read-only mode"
+
+    -- Verify we can read from read-only database
+    let stmt ← readOnlyDb.prepare "SELECT id, value FROM open_test;"
+    let hasRow ← stmt.step
+    expect hasRow "Expected to read row from read-only database"
+    let id ← stmt.columnInt 0
+    let value ← stmt.columnText 1
+    expect (id == 1) s!"Expected id 1, got {id}"
+    expect (value == "test") s!"Expected value 'test', got '{value}'"
+    recordSuccess "Successfully read from read-only database"
+
+    -- Verify we cannot write to read-only database
+    try
+      readOnlyDb.exec "INSERT INTO open_test VALUES (2, 'fail');"
+      recordFailure "Expected error when writing to read-only database"
+    catch e =>
+      recordSuccess s!"Read-only database correctly prevented write: {e}"
+
+    -- Test opening with readwrite + create flags
+    IO.FS.withTempFile fun _handle tempFile => do
+      let rwDb ← SQLite.openWith tempFile .readWriteCreate
+      let rwMode ← rwDb.dbReadonly
+      expect (rwMode.isEqSome .readWrite)
+        s!"Expected read-write mode, got {repr rwMode}"
+      recordSuccess "Opened new database with readwrite + create flags"
+
+      -- Verify we can write
+      rwDb.exec "CREATE TABLE test (x INTEGER);"
+      rwDb.exec "INSERT INTO test VALUES (42);"
+      let verifyStmt ← rwDb.prepare "SELECT x FROM test;"
+      let hasVerifyRow ← verifyStmt.step
+      expect hasVerifyRow "Expected to read back written data"
+      let x ← verifyStmt.columnInt 0
+      expect (x == 42) s!"Expected 42, got {x}"
+      recordSuccess "Successfully wrote to database opened with readwrite + create"
+
+    -- Test that readonly fails if database doesn't exist
+    let nonExistentPath := dbPath.parent.getD "." / "nonexistent-test-db-readonly.db"
+    -- Make sure it doesn't exist
+    try
+      IO.FS.removeFile nonExistentPath
+    catch _ => pure ()
+
+    try
+      let _db ← SQLite.openWith nonExistentPath { mode := .readonly }
+      recordFailure "Expected error when opening non-existent database in read-only mode"
+    catch _e =>
+      recordSuccess "Read-only open correctly failed for non-existent database"
+
+    -- Test that readwrite without create fails if database doesn't exist
+    let nonExistentPath2 := dbPath.parent.getD "." / "nonexistent-test-db-readwrite.db"
+    try
+      IO.FS.removeFile nonExistentPath2
+    catch _ => pure ()
+
+    try
+      let _db ← SQLite.openWith nonExistentPath2 { mode := .readWrite }
+      recordFailure "Expected error when opening non-existent database with readwrite (no create)"
+    catch _e =>
+      recordSuccess "Read-write without create correctly failed for non-existent database"
+
+def testColumnMetadata (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Column Metadata ===" do
+    -- Create a test table
+    db.exec "CREATE TABLE IF NOT EXISTS metadata_test (user_id INTEGER, user_name TEXT, user_email TEXT);"
+
+    -- Test with simple SELECT
+    let stmt1 ← db.prepare "SELECT user_id, user_name, user_email FROM metadata_test;"
+
+    let tableName0 ← stmt1.columnTableName 0
+    let tableName1 ← stmt1.columnTableName 1
+    let tableName2 ← stmt1.columnTableName 2
+
+    -- Note: These return empty if SQLITE_ENABLE_COLUMN_METADATA is not enabled
+    if tableName0.isEmpty then
+      recordSuccess "Column metadata not available (SQLITE_ENABLE_COLUMN_METADATA not enabled)"
+    else
+      expect (tableName0 == "metadata_test") s!"Expected table 'metadata_test', got '{tableName0}'"
+      expect (tableName1 == "metadata_test") s!"Expected table 'metadata_test', got '{tableName1}'"
+      expect (tableName2 == "metadata_test") s!"Expected table 'metadata_test', got '{tableName2}'"
+      recordSuccess s!"Column table names: {tableName0}, {tableName1}, {tableName2}"
+
+    -- Test origin names
+    let originName0 ← stmt1.columnOriginName 0
+    let originName1 ← stmt1.columnOriginName 1
+    let originName2 ← stmt1.columnOriginName 2
+
+    if originName0.isEmpty then
+      recordSuccess "Column origin names not available (SQLITE_ENABLE_COLUMN_METADATA not enabled)"
+    else
+      expect (originName0 == "user_id") s!"Expected origin 'user_id', got '{originName0}'"
+      expect (originName1 == "user_name") s!"Expected origin 'user_name', got '{originName1}'"
+      expect (originName2 == "user_email") s!"Expected origin 'user_email', got '{originName2}'"
+      recordSuccess s!"Column origin names: {originName0}, {originName1}, {originName2}"
+
+    -- Test database names
+    let dbName0 ← stmt1.columnDatabaseName 0
+    let dbName1 ← stmt1.columnDatabaseName 1
+    let dbName2 ← stmt1.columnDatabaseName 2
+
+    if dbName0.isEmpty then
+      recordSuccess "Column database names not available (SQLITE_ENABLE_COLUMN_METADATA not enabled)"
+    else
+      expect (dbName0 == "main") s!"Expected database 'main', got '{dbName0}'"
+      expect (dbName1 == "main") s!"Expected database 'main', got '{dbName1}'"
+      expect (dbName2 == "main") s!"Expected database 'main', got '{dbName2}'"
+      recordSuccess s!"Column database names: {dbName0}, {dbName1}, {dbName2}"
+
+    -- Test with aliases
+    let stmt2 ← db.prepare "SELECT user_id AS id, user_name AS name FROM metadata_test;"
+
+    -- columnName should return the alias
+    let alias0 ← stmt2.columnName 0
+    let alias1 ← stmt2.columnName 1
+    expect (alias0 == "id") s!"Expected alias 'id', got '{alias0}'"
+    expect (alias1 == "name") s!"Expected alias 'name', got '{alias1}'"
+    recordSuccess s!"Column aliases: {alias0}, {alias1}"
+
+    -- columnOriginName should return the original name (if metadata enabled)
+    let origin0 ← stmt2.columnOriginName 0
+    let origin1 ← stmt2.columnOriginName 1
+
+    if !origin0.isEmpty then
+      expect (origin0 == "user_id") s!"Expected original 'user_id', got '{origin0}'"
+      expect (origin1 == "user_name") s!"Expected original 'user_name', got '{origin1}'"
+      recordSuccess "Origin names differ from aliases (metadata enabled)"
+
 def testColumnName (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Column Names ===" do
     -- Create a simple test table
@@ -795,6 +1338,18 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testChanges db
     testBusyTimeout dbPath
     testClearBindings db
+    testSqlIntrospection db
+    testParameterInfo db
+    testParameterVariants db
+    testAutocommit db
+    testDbFilename dbPath
+    testTotalChanges db
+    testStmtReadonly db
+    testStmtBusy db
+    testDataCount db
+    testDbReadonly dbPath
+    testOpenWith dbPath
+    testColumnMetadata db
     testColumnName db
   ).run config).run headerRef).run initialStats
 
@@ -826,6 +1381,7 @@ def main (args : List String) : IO UInt32 := do
       IO.FS.withTempFile fun _handle tempFile =>
         runTests tempFile hasVerbose
 
+-- Check that this also works in the interpreter in meta code
 /-- info: true -/
 #guard_msgs in
 #eval IO.FS.withTempDir fun d => do return (← runTests (d / "foo.db") false (report := fun _ => pure ())) == 0

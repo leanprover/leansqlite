@@ -20,7 +20,7 @@ target sqlite.o pkg : FilePath := do
   -- fcntl and not fcntl64. On 32-bit systems this would limit database files to ~2GB, so we
   -- explicitly fail compilation on 32-bit platforms in the FFI wrappers. On 64-bit systems, there
   -- is no limitation.
-  buildO oFile srcJob weakArgs (traceArgs := #["-fPIC", "-DSQLITE_DISABLE_LFS"]) (extraDepTrace := getLeanTrace)
+  buildO oFile srcJob weakArgs (traceArgs := #["-fPIC", "-DSQLITE_DISABLE_LFS", "-DSQLITE_ENABLE_COLUMN_METADATA"]) (extraDepTrace := getLeanTrace)
 
 target leansqlite.o pkg : FilePath := do
   let sqliteHeaders := pkg.dir / "bindings"

@@ -15,6 +15,7 @@ Author: David Thrane Christiansen
 #include <lean/lean.h>
 #include <sqlite3.h>
 #include <string.h>
+#include <stdio.h>
 
 void leansqlite_connection_finalize(void *connection) {
   // Uses sqlite3_close instead of sqlite3_close_v2 because uses of the connection will have
@@ -106,6 +107,33 @@ lean_obj_res leansqlite_open(lean_obj_arg filename) {
   lean_dec(filename);
   sqlite3 *db;
   int code = sqlite3_open(filename_str, &db);
+  if (code != SQLITE_OK) {
+    lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
+  } else {
+    return lean_io_result_mk_ok(leansqlite_connection(db));
+  }
+}
+
+// Uses standard return convention: lean_obj_res
+// filename is consumed: lean_obj_arg
+// flags is a value: int32_t
+// vfs is consumed: lean_obj_arg (empty string means NULL)
+lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_arg vfs) {
+  const char *filename_str = lean_string_cstr(filename);
+  lean_dec(filename);
+
+  const char *vfs_str = NULL;
+  // checks for none vs some: none is a scalar
+  if (!lean_is_scalar(vfs)) {
+    lean_object *lean_vfs_str = lean_ctor_get(vfs, 0);
+    vfs_str = lean_string_cstr(lean_vfs_str);
+  }
+  lean_dec(vfs);
+
+  sqlite3 *db;
+  int code = sqlite3_open_v2(filename_str, &db, flags, vfs_str);
   if (code != SQLITE_OK) {
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
     sqlite3_close(db);
@@ -234,6 +262,129 @@ lean_obj_res leansqlite_column_type(b_lean_obj_arg stmt_obj, int32_t column) {
   return lean_io_result_mk_ok(lean_box(type_code));
 }
 
+lean_obj_res leansqlite_sql(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *sql = sqlite3_sql(stmt_ptr);
+  if (sql == NULL) {
+    lean_object *msg = lean_mk_string("Failed to get SQL from statement. Either there was insufficient memory for the string, or it would be longer than SQLITE_LIMIT_LENGTH.");
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(1, msg));
+  } else {
+    return lean_io_result_mk_ok(lean_mk_string(sql));
+  }
+}
+
+lean_obj_res leansqlite_expanded_sql(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  char *sql = sqlite3_expanded_sql(stmt_ptr);
+  if (sql == NULL) {
+    lean_object *msg = lean_mk_string("Failed to get SQL from statement. Either there was insufficient memory for the string, or it would be longer than SQLITE_LIMIT_LENGTH.");
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(1, msg));
+  } else {
+    lean_object *sql_str = lean_mk_string(sql);
+    sqlite3_free(sql);
+    return lean_io_result_mk_ok(sql_str);
+  }
+}
+
+// TODO test
+lean_obj_res leansqlite_bind_parameter_count(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  return lean_io_result_mk_ok(lean_box_uint32(sqlite3_bind_parameter_count(stmt_ptr)));
+}
+
+// TODO test
+int32_t leansqlite_bind_parameter_index(b_lean_obj_arg stmt_obj, lean_obj_arg name) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *name_cstr = lean_string_cstr(name);
+  lean_dec(name);
+  return sqlite3_bind_parameter_index(stmt_ptr, name_cstr);
+}
+
+lean_obj_res leansqlite_bind_parameter_name(b_lean_obj_arg stmt_obj, int32_t i) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *name = sqlite3_bind_parameter_name(stmt_ptr, i);
+  // sqlite3_bind_parameter_name returns NULL for unnamed parameters (?) or invalid indices
+  // We return empty string in both cases, which matches SQLite's behavior
+  lean_object *result = lean_mk_string(name != NULL ? name : "");
+  return lean_io_result_mk_ok(result);
+}
+
+// Uses standard return convention: lean_obj_res
+// connection is borrowed: b_lean_obj_arg
+// Returns false (0) if in a transaction, true (1) if NOT in a transaction
+lean_obj_res leansqlite_get_autocommit(b_lean_obj_arg connection) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  int autocommit = sqlite3_get_autocommit(db);
+  return lean_io_result_mk_ok(lean_box(autocommit != 0 ? 1 : 0));
+}
+
+// Uses standard return convention: lean_obj_res
+// connection is borrowed: b_lean_obj_arg
+// dbName is consumed: lean_obj_arg
+// Returns the filename of the specified database ("main", "temp", or attachment name)
+lean_obj_res leansqlite_db_filename(b_lean_obj_arg connection, lean_obj_arg dbName) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  const char *dbName_str = lean_string_cstr(dbName);
+  lean_dec(dbName);
+  const char *filename = sqlite3_db_filename(db, dbName_str);
+  // sqlite3_db_filename returns NULL if the database name is not found
+  lean_object *result = lean_mk_string(filename != NULL ? filename : "");
+  return lean_io_result_mk_ok(result);
+}
+
+lean_obj_res leansqlite_total_changes(b_lean_obj_arg connection) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  sqlite3_int64 total = sqlite3_total_changes64(db);
+  return lean_io_result_mk_ok(lean_box_uint64(total));
+}
+
+lean_obj_res leansqlite_stmt_readonly(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  int readonly = sqlite3_stmt_readonly(stmt_ptr);
+  return lean_io_result_mk_ok(lean_box(readonly != 0 ? 1 : 0));
+}
+
+lean_obj_res leansqlite_stmt_busy(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  int busy = sqlite3_stmt_busy(stmt_ptr);
+  return lean_io_result_mk_ok(lean_box(busy != 0 ? 1 : 0));
+}
+
+lean_obj_res leansqlite_data_count(b_lean_obj_arg stmt_obj) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  int count = sqlite3_data_count(stmt_ptr);
+  return lean_io_result_mk_ok(lean_box_uint32((uint32_t)count));
+}
+
+lean_obj_res leansqlite_db_readonly(b_lean_obj_arg connection, lean_obj_arg dbName) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  const char *dbName_str = lean_string_cstr(dbName);
+  lean_dec(dbName);
+  int readonly = sqlite3_db_readonly(db, dbName_str);
+  return lean_io_result_mk_ok(lean_box(readonly));
+}
+
+lean_obj_res leansqlite_column_table_name(b_lean_obj_arg stmt_obj, int32_t column) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *name = sqlite3_column_table_name(stmt_ptr, column);
+  lean_object *result = lean_mk_string(name != NULL ? name : "");
+  return lean_io_result_mk_ok(result);
+}
+
+lean_obj_res leansqlite_column_origin_name(b_lean_obj_arg stmt_obj, int32_t column) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *name = sqlite3_column_origin_name(stmt_ptr, column);
+  lean_object *result = lean_mk_string(name != NULL ? name : "");
+  return lean_io_result_mk_ok(result);
+}
+
+lean_obj_res leansqlite_column_database_name(b_lean_obj_arg stmt_obj, int32_t column) {
+  sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
+  const char *name = sqlite3_column_database_name(stmt_ptr, column);
+  lean_object *result = lean_mk_string(name != NULL ? name : "");
+  return lean_io_result_mk_ok(result);
+}
+
 lean_obj_res leansqlite_bind_text(b_lean_obj_arg stmt_obj, int32_t index, lean_obj_arg text) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *text_str = lean_string_cstr(text);
@@ -351,11 +502,11 @@ lean_obj_res leansqlite_exec(b_lean_obj_arg connection, lean_obj_arg sql) {
   int code = sqlite3_exec(db, sql_str, NULL, NULL, &err_msg);
 
   if (code != SQLITE_OK) {
-    lean_object *msg = NULL;
+    lean_object *msg;
     if (err_msg == NULL) {
-      lean_object *msg = lean_mk_string("Unknown error");
+      msg = lean_mk_string("Unknown error");
     } else {
-      lean_object *msg = lean_mk_string(err_msg);
+      msg = lean_mk_string(err_msg);
       sqlite3_free(err_msg);
     }
     assert(msg != NULL);
