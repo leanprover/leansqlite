@@ -347,6 +347,147 @@ def testInterpolation (db : SQLite) : TestM Unit :=
       else
         recordSuccess s!"Interpolation works correctly, found: {n}"
 
+def testNullableParams (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing NullableQueryParam vs QueryParam ===" do
+    -- Create a test table with nullable columns
+    db.exec "CREATE TABLE IF NOT EXISTS nullable_test (id INTEGER PRIMARY KEY, name TEXT, description TEXT, score INTEGER);"
+    db.exec "DELETE FROM nullable_test;"
+
+    -- Test 1: Non-nullable parameters (QueryParam)
+    let name1 : String := "Alice"
+    let score1 : Int32 := 100
+    let stmt1 ← db sql!"INSERT INTO nullable_test (name, score) VALUES ({name1}, {score1})"
+    stmt1.exec
+    recordSuccess "Non-nullable parameters (QueryParam) inserted successfully"
+
+    -- Verify non-nullable insert
+    let verify1 ← db.prepare "SELECT name, score FROM nullable_test WHERE name = 'Alice';"
+    let hasRow1 ← verify1.step
+    if hasRow1 then
+      let n ← verify1.columnText 0
+      let s ← verify1.columnInt 1
+      expect (n == "Alice") s!"Expected 'Alice', got '{n}'"
+      expect (s == 100) s!"Expected 100, got {s}"
+      recordSuccess "Non-nullable values verified"
+    else
+      recordFailure "No row found for Alice"
+
+    -- Test 2: Nullable parameters with Some value
+    let name2 : Option String := some "Bob"
+    let desc2 : Option String := some "A description"
+    let score2 : Option Int32 := some 85
+    let stmt2 ← db sql!"INSERT INTO nullable_test (name, description, score) VALUES ({name2}, {desc2}, {score2})"
+    stmt2.exec
+    recordSuccess "Nullable parameters with Some values inserted successfully"
+
+    -- Verify Some values
+    let verify2 ← db.prepare "SELECT name, description, score FROM nullable_test WHERE name = 'Bob';"
+    let hasRow2 ← verify2.step
+    if hasRow2 then
+      let n ← verify2.columnText 0
+      let d ← verify2.columnText 1
+      let s ← verify2.columnInt 2
+      expect (n == "Bob") s!"Expected 'Bob', got '{n}'"
+      expect (d == "A description") s!"Expected 'A description', got '{d}'"
+      expect (s == 85) s!"Expected 85, got {s}"
+      recordSuccess "Some values verified (not NULL)"
+    else
+      recordFailure "No row found for Bob"
+
+    -- Test 3: Nullable parameters with None value
+    let name3 : String := "Charlie"
+    let desc3 : Option String := none
+    let score3 : Option Int32 := none
+    let stmt3 ← db sql!"INSERT INTO nullable_test (name, description, score) VALUES ({name3}, {desc3}, {score3})"
+    stmt3.exec
+    recordSuccess "Nullable parameters with None values inserted successfully"
+
+    -- Verify None values are NULL in database
+    let verify3 ← db.prepare "SELECT name, description, score FROM nullable_test WHERE name = 'Charlie';"
+    let hasRow3 ← verify3.step
+    if hasRow3 then
+      let n ← verify3.columnText 0
+      let isDescNull ← verify3.columnNull 1
+      let isScoreNull ← verify3.columnNull 2
+      expect (n == "Charlie") s!"Expected 'Charlie', got '{n}'"
+      expect isDescNull s!"Expected description to be NULL"
+      expect isScoreNull s!"Expected score to be NULL"
+      recordSuccess "None values verified as NULL in database"
+    else
+      recordFailure "No row found for Charlie"
+
+    -- Test 4: Mixed nullable and non-nullable in same query
+    let name4 : String := "Diana"
+    let desc4 : Option String := some "Mixed values"
+    let score4 : Int32 := 90
+    let stmt4 ← db sql!"INSERT INTO nullable_test (name, description, score) VALUES ({name4}, {desc4}, {score4})"
+    stmt4.exec
+    recordSuccess "Mixed nullable and non-nullable parameters work together"
+
+    -- Verify mixed values
+    let verify4 ← db.prepare "SELECT name, description, score FROM nullable_test WHERE name = 'Diana';"
+    let hasRow4 ← verify4.step
+    if hasRow4 then
+      let n ← verify4.columnText 0
+      let d ← verify4.columnText 1
+      let s ← verify4.columnInt 2
+      expect (n == "Diana") s!"Expected 'Diana', got '{n}'"
+      expect (d == "Mixed values") s!"Expected 'Mixed values', got '{d}'"
+      expect (s == 90) s!"Expected 90, got {s}"
+      recordSuccess "Mixed parameters verified correctly"
+    else
+      recordFailure "No row found for Diana"
+
+    -- Test 5: Nullable in WHERE clauses
+    let searchScore : Option Int32 := some 100
+    let stmt5 ← db sql!"SELECT name FROM nullable_test WHERE score = {searchScore}"
+    let hasRow5 ← stmt5.step
+    if hasRow5 then
+      let n ← stmt5.columnText 0
+      expect (n == "Alice") s!"Expected 'Alice', got '{n}'"
+      recordSuccess "Nullable parameter in WHERE clause (with Some value)"
+    else
+      recordFailure "Expected to find Alice with score 100"
+
+    -- Test 6: None parameter binding (creates NULL)
+    let searchNull : Option String := none
+    let stmt6 ← db sql!"INSERT INTO nullable_test (name, description, score) VALUES ('Test', {searchNull}, 0)"
+    stmt6.exec
+    recordSuccess "None parameter binds correctly (creates NULL)"
+
+    -- Verify the NULL was inserted
+    let verify6 ← db.prepare "SELECT description FROM nullable_test WHERE name = 'Test';"
+    let hasRow6 ← verify6.step
+    if hasRow6 then
+      let isNull ← verify6.columnNull 0
+      expect isNull s!"Expected description to be NULL for Test"
+      recordSuccess "Verified None parameter created NULL value"
+    else
+      recordFailure "No row found for Test"
+
+    -- Test 7: Different types with Option
+    let byteOpt : Option ByteArray := some (ByteArray.mk #[1, 2, 3])
+    let floatOpt : Option Float := some 3.14
+    let int64Opt : Option Int64 := some 9999999999
+    db.exec "CREATE TABLE IF NOT EXISTS type_test (id INTEGER PRIMARY KEY, data BLOB, score REAL, bignum INTEGER);"
+    let stmt7 ← db sql!"INSERT INTO type_test (data, score, bignum) VALUES ({byteOpt}, {floatOpt}, {int64Opt})"
+    stmt7.exec
+    recordSuccess "Different Option types work correctly"
+
+    -- Verify different types
+    let verify7 ← db.prepare "SELECT data, score, bignum FROM type_test;"
+    let hasRow7 ← verify7.step
+    if hasRow7 then
+      let blob ← verify7.columnBlob 0
+      let score ← verify7.columnDouble 1
+      let bignum ← verify7.columnInt64 2
+      expect (blob.size == 3) s!"Expected blob size 3, got {blob.size}"
+      expect (score >= 3.13 && score <= 3.15) s!"Expected ~3.14, got {score}"
+      expect (bignum == 9999999999) s!"Expected 9999999999, got {bignum}"
+      recordSuccess "Different Option types verified correctly"
+    else
+      recordFailure "No row found in type_test"
+
 
 
 def testResultIter (db : SQLite) : TestM Unit :=
@@ -1361,6 +1502,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testBlobSupport db
     testErrorCases db
     testInterpolation db
+    testNullableParams db
     testResultIter db
     testTransactions db
     testLastInsertRowId db
@@ -1414,3 +1556,17 @@ def main (args : List String) : IO UInt32 := do
 /-- info: true -/
 #guard_msgs in
 #eval IO.FS.withTempDir fun d => do return (← runTests (d / "foo.db") false (report := fun _ => pure ())) == 0
+
+-- Test that nested Options produce a type error. There's no way to represent `some none` vs `none`
+-- with SQL NULL.
+/--
+error: failed to synthesize instance of type class
+  NullableQueryParam (Option (Option String))
+
+Hint: Type class instance resolution failures can be inspected with the `set_option trace.Meta.synthInstance true` command.
+-/
+#guard_msgs in
+def testNestedOptionError (db : SQLite) : IO Unit := do
+  let nestedOption : Option (Option String) := some none
+  let _stmt ← db sql!"SELECT * FROM table WHERE col = {nestedOption}"
+  pure ()
