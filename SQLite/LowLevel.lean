@@ -143,6 +143,10 @@ deriving Repr
 /--
 Prepares a statement.
 
+This function accepts only a single SQL statement. If multiple semicolon-separated
+statements are provided, an error is returned. For executing multiple statements without
+parameters, use `SQLite.exec`.
+
 Statements may contain host parameters that are later provided with data using the following syntax:
  - {lit}`?` for positional parameters
  - {lit}`?NNN` for positional parameters with manually-specified indices
@@ -462,6 +466,11 @@ end Stmt
 
 /--
 Executes SQL that doesn't return data.
+
+This function supports executing multiple semicolon-separated SQL statements in a single call.
+If any statement fails, execution stops and an error is returned. To ensure all statements
+execute atomically (all succeed or all roll back), wrap the call in a transaction.
+For single statements with parameters, use {name}`prepare` or the {lit}`sql!` macro instead.
 -/
 public def exec (db : SQLite) (sql : String) : IO Unit :=
   FFI.exec db.connection sql
