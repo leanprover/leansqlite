@@ -8,14 +8,15 @@ Author: David Thrane Christiansen
 // On 32-bit systems, this would limit database files to ~2GB. Since we don't have CI to test
 // error handling in this situation, compilation fails.
 // If emscripten becomes a target of interest, then this conditional can be made more specific.
-#if defined(__i386__) || defined(_M_IX86) || defined(__arm__) || (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 4)
+#if defined(__i386__) || defined(_M_IX86) || defined(__arm__) ||                                   \
+    (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 4)
 #error "32-bit platforms are not supported by the FFI bindings."
 #endif
 
 #include <lean/lean.h>
 #include <sqlite3.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 void leansqlite_connection_finalize(void *connection) {
   // Uses sqlite3_close instead of sqlite3_close_v2 because uses of the connection will have
@@ -24,6 +25,7 @@ void leansqlite_connection_finalize(void *connection) {
   assert(code == SQLITE_OK);
 }
 
+// NOLINTNEXTLINE(misc-unused-parameters)
 void leansqlite_connection_foreach(void *connection, b_lean_obj_arg arg) {
   return;
 }
@@ -52,6 +54,7 @@ void leansqlite_stmt_finalize(void *stmt) {
   // something erroneous, so we just finalize it.
 }
 
+// NOLINTNEXTLINE(misc-unused-parameters)
 void leansqlite_stmt_foreach(void *connection, b_lean_obj_arg arg) {
   return;
 }
@@ -66,12 +69,14 @@ sqlite3_stmt *stmt(lean_object *stmt) {
   return (sqlite3_stmt *) lean_get_external_data(stmt);
 }
 
+// NOLINTNEXTLINE(misc-unused-parameters)
 void leansqlite_value_finalize(void *value) {
   // sqlite3_value objects are owned by SQLite and should not be freed
   // They are only valid during certain callback contexts
   return;
 }
 
+// NOLINTNEXTLINE(misc-unused-parameters)
 void leansqlite_value_foreach(void *value, b_lean_obj_arg arg) {
   return;
 }
@@ -87,18 +92,12 @@ sqlite3_value *leansqlite_get_value(lean_object *value_obj) {
 }
 
 lean_obj_res leansqlite_initialize() {
-  leansqlite_connection_class = lean_register_external_class(
-    leansqlite_connection_finalize,
-    leansqlite_connection_foreach
-  );
-  leansqlite_stmt_class = lean_register_external_class(
-    leansqlite_stmt_finalize,
-    leansqlite_stmt_foreach
-  );
-  leansqlite_value_class = lean_register_external_class(
-    leansqlite_value_finalize,
-    leansqlite_value_foreach
-  );
+  leansqlite_connection_class =
+      lean_register_external_class(leansqlite_connection_finalize, leansqlite_connection_foreach);
+  leansqlite_stmt_class =
+      lean_register_external_class(leansqlite_stmt_finalize, leansqlite_stmt_foreach);
+  leansqlite_value_class =
+      lean_register_external_class(leansqlite_value_finalize, leansqlite_value_foreach);
   return lean_io_result_mk_ok(lean_box(0));
 }
 
@@ -172,7 +171,7 @@ lean_obj_res leansqlite_prepare(b_lean_obj_arg connection, lean_obj_arg sql) {
 lean_obj_res leansqlite_column_text(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const unsigned char *text = sqlite3_column_text(stmt_ptr, column);
-  lean_object *result = lean_mk_string(text != NULL ? (const char *)text : "");
+  lean_object *result = lean_mk_string(text != NULL ? (const char *) text : "");
   return lean_io_result_mk_ok(result);
 }
 
@@ -198,7 +197,7 @@ lean_obj_res leansqlite_column_double(b_lean_obj_arg stmt_obj, int32_t column) {
 
 lean_obj_res leansqlite_column_int(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
-  int32_t value = (int32_t)sqlite3_column_int(stmt_ptr, column);
+  int32_t value = (int32_t) sqlite3_column_int(stmt_ptr, column);
   return lean_io_result_mk_ok(lean_box(value));
 }
 
@@ -217,7 +216,7 @@ lean_obj_res leansqlite_value_text(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   lean_dec(value_obj);
   const unsigned char *text = sqlite3_value_text(value);
-  lean_object *result = lean_mk_string(text != NULL ? (const char *)text : "");
+  lean_object *result = lean_mk_string(text != NULL ? (const char *) text : "");
   return lean_io_result_mk_ok(result);
 }
 
@@ -253,7 +252,7 @@ lean_obj_res leansqlite_value_int64(lean_obj_arg value_obj) {
 uint32_t leansqlite_column_count(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int count = sqlite3_column_count(stmt_ptr);
-  return (uint32_t)count;
+  return (uint32_t) count;
 }
 
 lean_obj_res leansqlite_column_type(b_lean_obj_arg stmt_obj, int32_t column) {
@@ -266,7 +265,9 @@ lean_obj_res leansqlite_sql(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *sql = sqlite3_sql(stmt_ptr);
   if (sql == NULL) {
-    lean_object *msg = lean_mk_string("Failed to get SQL from statement. Either there was insufficient memory for the string, or it would be longer than SQLITE_LIMIT_LENGTH.");
+    lean_object *msg =
+        lean_mk_string("Failed to get SQL from statement. Either there was insufficient memory for "
+                       "the string, or it would be longer than SQLITE_LIMIT_LENGTH.");
     return lean_io_result_mk_error(lean_mk_io_error_other_error(1, msg));
   } else {
     return lean_io_result_mk_ok(lean_mk_string(sql));
@@ -277,7 +278,9 @@ lean_obj_res leansqlite_expanded_sql(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   char *sql = sqlite3_expanded_sql(stmt_ptr);
   if (sql == NULL) {
-    lean_object *msg = lean_mk_string("Failed to get SQL from statement. Either there was insufficient memory for the string, or it would be longer than SQLITE_LIMIT_LENGTH.");
+    lean_object *msg =
+        lean_mk_string("Failed to get SQL from statement. Either there was insufficient memory for "
+                       "the string, or it would be longer than SQLITE_LIMIT_LENGTH.");
     return lean_io_result_mk_error(lean_mk_io_error_other_error(1, msg));
   } else {
     lean_object *sql_str = lean_mk_string(sql);
@@ -353,7 +356,7 @@ lean_obj_res leansqlite_stmt_busy(b_lean_obj_arg stmt_obj) {
 lean_obj_res leansqlite_data_count(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int count = sqlite3_data_count(stmt_ptr);
-  return lean_io_result_mk_ok(lean_box_uint32((uint32_t)count));
+  return lean_io_result_mk_ok(lean_box_uint32((uint32_t) count));
 }
 
 lean_obj_res leansqlite_db_readonly(b_lean_obj_arg connection, lean_obj_arg dbName) {
@@ -390,6 +393,7 @@ lean_obj_res leansqlite_bind_text(b_lean_obj_arg stmt_obj, int32_t index, lean_o
   const char *text_str = lean_string_cstr(text);
   lean_dec(text);
   // Use SQLITE_TRANSIENT so SQLite makes its own copy of the string
+  // NOLINTNEXTLINE(performance-no-int-to-ptr)
   int code = sqlite3_bind_text(stmt_ptr, index, text_str, -1, SQLITE_TRANSIENT);
   if (code != SQLITE_OK) {
     sqlite3 *db = sqlite3_db_handle(stmt_ptr);
@@ -414,7 +418,7 @@ lean_obj_res leansqlite_bind_double(b_lean_obj_arg stmt_obj, int32_t index, doub
 
 lean_obj_res leansqlite_bind_int(b_lean_obj_arg stmt_obj, int32_t index, uint32_t value) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
-  int code = sqlite3_bind_int(stmt_ptr, index, (int)value);
+  int code = sqlite3_bind_int(stmt_ptr, index, (int) value);
   if (code != SQLITE_OK) {
     sqlite3 *db = sqlite3_db_handle(stmt_ptr);
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
@@ -453,6 +457,7 @@ lean_obj_res leansqlite_bind_blob(b_lean_obj_arg stmt_obj, int32_t index, lean_o
   size_t size = lean_sarray_size(blob);
   const void *data = lean_sarray_cptr(blob);
   // Use SQLITE_TRANSIENT so SQLite makes its own copy
+  // NOLINTNEXTLINE(bugprone-narrowing-conversions,performance-no-int-to-ptr)
   int code = sqlite3_bind_blob(stmt_ptr, index, data, size, SQLITE_TRANSIENT);
   lean_dec(blob);
 
@@ -557,7 +562,8 @@ lean_obj_res leansqlite_column_name(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_column_name(stmt_ptr, column);
   if (name == NULL) {
-    lean_object *msg = lean_mk_string("Failed to get column name (typically due to an allocation failure in SQLite)");
+    lean_object *msg = lean_mk_string(
+        "Failed to get column name (typically due to an allocation failure in SQLite)");
     return lean_io_result_mk_error(lean_mk_io_error_other_error(1, msg));
   } else {
     lean_object *result = lean_mk_string(name);

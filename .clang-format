@@ -1,0 +1,65 @@
+---
+# clang-format configuration for LeanSQLite FFI bindings
+# Tailored for C code that bridges Lean and SQLite
+
+# Use LLVM style as base, with customizations
+BasedOnStyle: LLVM
+
+# Language and standard
+Language: Cpp
+Standard: c++11
+
+# Indentation (2 spaces to match your existing code)
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Line length
+ColumnLimit: 100
+
+# Pointer and reference alignment
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# Function formatting
+AlignAfterOpenBracket: Align
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortFunctionsOnASingleLine: Empty
+AlwaysBreakAfterReturnType: None
+BinPackParameters: false
+
+# Control flow formatting
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: false
+  AfterControlStatement: Never
+  AfterStruct: false
+  AfterEnum: false
+  BeforeCatch: false
+  BeforeElse: false
+
+# Spacing
+SpaceAfterCStyleCast: true
+SpaceBeforeParens: ControlStatements
+SpacesInCStyleCastParentheses: false
+SpaceBeforeAssignmentOperators: true
+
+# Comments
+AlignTrailingComments: true
+ReflowComments: true
+SpacesBeforeTrailingComments: 2
+
+# Keep existing vertical spacing
+MaxEmptyLinesToKeep: 2
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# Preprocessor
+IndentPPDirectives: None
+
+# Keep function arguments aligned
+AlignConsecutiveDeclarations: false
+AlignConsecutiveAssignments: false
