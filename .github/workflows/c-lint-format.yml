@@ -1,0 +1,36 @@
+name: Lint and Format C Bindings
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint-format:
+    runs-on: ubuntu-latest
+    name: Lint and format C bindings
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install LLVM (clang-tidy and clang-format)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy clang-format
+
+      - name: Install Lean
+        uses: leanprover/lean-action@v1
+        with:
+          build: false
+
+      - name: Run C linter and formatter
+        run: ./lint-format-c.sh --check
+
+      - name: Report results
+        if: failure()
+        run: |
+          echo "::error::C code linting or formatting check failed"
+          echo "Run './lint-format-c.sh' locally to fix formatting issues"
+          echo "Check the output above for linting/formating errors"

@@ -1,0 +1,59 @@
+---
+# clang-tidy configuration for LeanSQLite FFI bindings
+
+Checks: >
+  clang-diagnostic-*,
+  clang-analyzer-*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-suspicious-include,
+  performance-*,
+  portability-*,
+  readability-braces-around-statements,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-non-const-parameter,
+  readability-simplify-boolean-expr,
+  misc-*,
+  -misc-include-cleaner
+
+# Disabled checks and rationale:
+# - bugprone-easily-swappable-parameters: FFI functions often have multiple similar parameters
+# - bugprone-suspicious-include: We include both lean and sqlite headers intentionally
+# - misc-include-cleaner: False positives on symbols defined in lean.h (assert, stdint types)
+#
+# Enabled checks that use NOLINT for specific cases:
+# - bugprone-narrowing-conversions and performance-no-int-to-ptr: Suppressed where
+#   SQLite's API requires these patterns (SQLITE_TRANSIENT, size_t to int conversions)
+# - misc-no-recursion: Enabled to catch accidental recursion in FFI bindings
+# - misc-unused-parameters: Suppressed only for foreach/finalize functions where
+#   parameters are required by Lean's external class API but not used
+
+CheckOptions:
+  # Allow single-character variable names common in FFI code (db, i, etc.)
+  - key: readability-identifier-length.MinimumVariableNameLength
+    value: 1
+
+  # Allow pointer casts which are necessary for FFI work
+  - key: performance-no-int-to-ptr.CheckCastToVoid
+    value: false
+
+  # Be lenient with function length since FFI functions can be verbose
+  - key: readability-function-size.LineThreshold
+    value: 200
+
+  # Don't enforce const for parameters (Lean FFI has specific conventions)
+  - key: readability-non-const-parameter.AllowImplicitCast
+    value: true
+
+# Header filter: only check our bindings, not sqlite3.c or lean headers
+HeaderFilterRegex: 'bindings/leansqlite\.(c|h)'
+
+# Warnings to treat as errors (critical issues only)
+WarningsAsErrors: >
+  clang-diagnostic-error,
+  bugprone-use-after-move,
+  bugprone-infinite-loop
+
+# Format style (for fix suggestions)
+FormatStyle: none
