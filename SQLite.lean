@@ -166,16 +166,23 @@ open Lean
 
 /--
 An interpolated query that creates a prepared statement.
+
+Accepts only a single SQL statement. Interpolated values are converted to SQLite
+parameter bindings. For multiple statements, use {name}`SQLite.exec`.
 -/
 syntax term "sql!" interpolatedStr(term) : term
 
 /--
-An interpolated query is run via {name}`SQLite.exec`, discarding the results.
+An interpolated query that executes a single statement, discarding the results.
+
+For multiple statements without parameters, use {name}`SQLite.exec` directly.
 -/
 syntax term "exec!" interpolatedStr(term) : term
 
 /--
 An interpolated query that creates an iterator into the results.
+
+Accepts only a single SQL statement that returns data.
 -/
 syntax term "query!" interpolatedStr(term) (&" as " term)? : term
 

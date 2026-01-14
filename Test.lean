@@ -242,6 +242,26 @@ def testMultipleStatements (db : SQLite) : TestM Unit := do
   expectFailure' (s!"Correctly rejected multiple statements: {·}") do
     discard <| db.prepare "SELECT 1; SELECT 2;"
 
+def testExecMultipleStatements (db : SQLite) : TestM Unit := do
+  expectSuccess "db.exec handles multiple statements" do
+    db.exec "
+      CREATE TABLE multi_test1 (id INTEGER PRIMARY KEY);
+      CREATE TABLE multi_test2 (name TEXT);
+      INSERT INTO multi_test1 VALUES (1), (2);
+    "
+  -- Verify both tables were created and data inserted
+  let stmt1 ← db.prepare "SELECT COUNT(*) FROM multi_test1;"
+  discard stmt1.step
+  let count1 ← stmt1.columnInt 0
+  if count1 != 2 then throw <| IO.userError s!"Expected 2 rows in multi_test1, got {count1}"
+
+  let stmt2 ← db.prepare "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'multi_test%';"
+  discard stmt2.step
+  let count2 ← stmt2.columnInt 0
+  if count2 != 2 then throw <| IO.userError s!"Expected 2 tables, got {count2}"
+
+  recordSuccess "Multiple statements executed correctly"
+
 def testStepAfterDone (db : SQLite) : TestM Unit := do
   let doneStmt ← db.prepare "SELECT 1;"
   -- Discard the first row
@@ -295,6 +315,7 @@ def testErrorCases (db : SQLite) : TestM Unit :=
     testInvalidSQL db
     testOutOfRangeColumn db
     testMultipleStatements db
+    testExecMultipleStatements db
     testStepAfterDone db
     testTypeFlexibility db
     testNullInNonOptionTypes db
