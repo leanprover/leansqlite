@@ -15,7 +15,7 @@ jobs:
 
             - name: Verify .lean files start with a copyright header.
               run: |
-                  FILES=$(find . -path ./.lake -prune -o -type f -name "*.lean" -print | while read file; do
+                  FILES=$(find . -path ./.lake -prune -o -type f -name "*.lean" -print | while read -r file; do
                     perl -ne 'BEGIN { $/ = undef; } print "$ARGV\n" if !m{\A/-\nCopyright}; exit;' "$file"
                   done)
                   if [ -n "$FILES" ]; then
