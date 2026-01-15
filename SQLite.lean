@@ -6,6 +6,7 @@ Author: David Thrane Christiansen
 module
 public import SQLite.FFI
 public import SQLite.LowLevel
+public import SQLite.Blob
 import Std.Data.Iterators
 import Lean.Elab.Command
 
@@ -46,6 +47,14 @@ public instance : QueryParam Bool where
 
 public instance : QueryParam Nat where
   bind stmt i n := Stmt.bindText stmt i (toString n)
+
+open Blob in
+/--
+Defines an instance that binds a parameter as a binary blob, according to its {name}`ToBinary`
+instance.
+-/
+public def QueryParam.asBlob [ToBinary α] : QueryParam α where
+  bind stmt i x := Stmt.bindBlob stmt i (toBinary x)
 
 /--
 Provides a canonical means of binding a potentially null value of type {name}`α` in a SQLite query.
@@ -95,6 +104,17 @@ public instance : ResultColumn Bool where
 
 public instance : ResultColumn Nat where
   get stmt i := (·.toNatClampNeg) <$> Stmt.columnInt64 stmt i
+
+open Blob in
+/--
+Defines an instance that interprets a column as a binary blob, according to its {name}`FromBinary`
+instance.
+-/
+public def ResultColumn.asBlob [FromBinary α] : ResultColumn α where
+  get stmt i := do
+    match (← fromBinary <$> Stmt.columnBlob stmt i) with
+    | .ok v => pure v
+    | .error e => throw <| IO.userError s!"Failed to deserialize blob in column {i}: {e}"
 
 /--
 Provides a canonical way to read a potentially-null value of type {name}`α` from a SQL query.
