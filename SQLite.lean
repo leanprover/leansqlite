@@ -41,6 +41,9 @@ public instance : QueryParam Float where
 public instance : QueryParam Unit where
   bind stmt index _ := Stmt.bindNull stmt index
 
+public instance : QueryParam Bool where
+  bind stmt index b := Stmt.bindInt32 stmt index (if b then 1 else 0)
+
 public instance : QueryParam Nat where
   bind stmt i n := Stmt.bindText stmt i (toString n)
 
@@ -86,6 +89,9 @@ public instance : ResultColumn Int32 where
 
 public instance : ResultColumn Int64 where
   get stmt i := Stmt.columnInt64 stmt i
+
+public instance : ResultColumn Bool where
+  get stmt i := do return (← Stmt.columnInt stmt i) ≠ 0
 
 public instance : ResultColumn Nat where
   get stmt i := (·.toNatClampNeg) <$> Stmt.columnInt64 stmt i
