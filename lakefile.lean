@@ -2,6 +2,8 @@ import Lake
 
 open System Lake DSL
 
+require plausible from git "https://github.com/leanprover-community/plausible"@"main"
+
 package leansqlite where
   version := v!"0.1.0"
   keywords := #["sqlite", "database", "ffi"]
@@ -41,5 +43,8 @@ lean_lib SQLite where
   needs := #[leansqlite]
   precompileModules := true
 
+@[default_target]
+lean_lib SQLiteTest
+
 @[default_target, test_driver]
-lean_exe Test
+lean_exe TestMain

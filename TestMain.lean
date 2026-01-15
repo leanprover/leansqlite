@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: David Thrane Christiansen
 -/
 import SQLite
+import SQLiteTest
 
 open SQLite
 
@@ -1486,7 +1487,13 @@ def testClearBindings (db : SQLite) : TestM Unit :=
 def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO Unit := IO.println) : IO UInt32 := do
   -- Set up monad layers
   let config : Config := { verbose := verbose, report }
-  let initialStats : Stats := { successes := 0, failures := 0 }
+
+  config.report "=== Testing blob serialization ==="
+  let (successes, failures) ← Test.Blob.runBlobTests
+  if failures > 0 then config.report s!"{failures} blob serialization tests failed"
+
+  let mut initialStats : Stats := { successes, failures }
+
   let headerRef ← IO.mkRef (none : Option String)
 
   config.report "=== Testing SQLite Bindings ==="
