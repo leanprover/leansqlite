@@ -1,1 +1,23 @@
+# Lean build artifacts
 /.lake
+
+# Database files
+*.db
+
+# Test artifacts
+*.log
+log
+trace*
+
+# Backup files
+*.bak
+
+# OS files
+.DS_Store
+*.swp
+*~
+
+# Editor config
+.vscode/
+.idea/
+*.code-workspace
