@@ -15,7 +15,6 @@ set_option linter.missingDocs true
 
 namespace SQLite
 
-section Interpolation
 open Lean
 
 /--
@@ -70,7 +69,14 @@ public instance [QueryParam α] : NullableQueryParam (Option α) where
     | none => stmt.bindNull i
     | some val => QueryParam.bind stmt i val
 
-end Interpolation
+/--
+Binds a query parameter based on its Lean type's {name}`NullableQueryParam` instance.
+
+{name}`index` is the 1-based positional index of the parameter to be bound.
+-/
+def Stmt.bind [NullableQueryParam α] (stmt : Stmt) (index : Int32) (param : α) : IO Unit := do
+  NullableQueryParam.bind stmt index param
+
 
 /--
 Provides a canonical way to read a non-null value of type {name}`α` from a SQL query.
