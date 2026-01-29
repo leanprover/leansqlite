@@ -639,4 +639,27 @@ public def transaction (db : SQLite) (action : IO α) (mode : TransactionMode :=
     rollback db
     throw e
 
+/--
+Enables SHA3 extension functions on this connection.
+
+After calling this function, the following SQL functions become available:
+
+: {lit}`sha3(X, SIZE)`
+
+  Computes the {lit}`SHA3` hash of {lit}`X`. {lit}`SIZE` defaults to 256 and can be 224, 256, 384, or 512.
+
+: {lit}`sha3_agg(Y, SIZE)`
+
+  An aggregate function that computes a hash over multiple rows.
+
+: {lit}`sha3_query(SQL, SIZE)`
+
+  Executes {lit}`SQL` and hashes all results deterministically.
+
+It is safe to call this function multiple times on the same connection; subsequent calls simply
+re-register the functions.
+-/
+public def enableSha3 (db : SQLite) : IO Unit :=
+  FFI.Extensions.shathreeInit db.connection
+
 end SQLite

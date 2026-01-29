@@ -17,8 +17,9 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         lean-version:
           - toolchain-file
-          - leanprover/lean4:4.27.0-rc1
-          - leanprover/lean4-nightly:nightly-2026-01-12
+          - leanprover/lean4:4.27.0
+          - leanprover/lean4:4.28.0-rc1
+          - leanprover/lean4-nightly:nightly-2026-01-28
 
     name: build (${{ matrix.os }}, lean ${{ matrix.lean-version }})
 

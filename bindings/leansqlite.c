@@ -18,6 +18,18 @@ Author: David Thrane Christiansen
 #include <stdio.h>
 #include <string.h>
 
+// Export macro for FFI functions.
+// On Windows, adding shathree.c (which has __declspec(dllexport) on its entry point)
+// switches the linker to explicit export mode, requiring all exported symbols to be marked.
+#ifdef _WIN32
+#define LEANSQLITE_API __declspec(dllexport)
+#else
+#define LEANSQLITE_API __attribute__((visibility("default")))
+#endif
+
+// Forward declaration for SHA3 extension initialization (defined in shathree.c)
+int sqlite3_shathree_init(sqlite3 *db, char **pzErrMsg, const void *pApi);
+
 void leansqlite_connection_finalize(void *connection) {
   // Uses sqlite3_close instead of sqlite3_close_v2 because uses of the connection will have
   // references to it, so it won't be freed/finalized until they are.
@@ -91,6 +103,7 @@ sqlite3_value *leansqlite_get_value(lean_object *value_obj) {
   return (sqlite3_value *) lean_get_external_data(value_obj);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_initialize() {
   leansqlite_connection_class =
       lean_register_external_class(leansqlite_connection_finalize, leansqlite_connection_foreach);
@@ -101,6 +114,7 @@ lean_obj_res leansqlite_initialize() {
   return lean_io_result_mk_ok(lean_box(0));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_open(lean_obj_arg filename) {
   const char *filename_str = lean_string_cstr(filename);
   lean_dec(filename);
@@ -119,6 +133,7 @@ lean_obj_res leansqlite_open(lean_obj_arg filename) {
 // filename is consumed: lean_obj_arg
 // flags is a value: int32_t
 // vfs is consumed: lean_obj_arg (empty string means NULL)
+LEANSQLITE_API
 lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_arg vfs) {
   const char *filename_str = lean_string_cstr(filename);
   lean_dec(filename);
@@ -142,6 +157,7 @@ lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_a
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_prepare(b_lean_obj_arg connection, lean_obj_arg sql) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *sql_str = lean_string_cstr(sql);
@@ -168,6 +184,7 @@ lean_obj_res leansqlite_prepare(b_lean_obj_arg connection, lean_obj_arg sql) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_text(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const unsigned char *text = sqlite3_column_text(stmt_ptr, column);
@@ -175,6 +192,7 @@ lean_obj_res leansqlite_column_text(b_lean_obj_arg stmt_obj, int32_t column) {
   return lean_io_result_mk_ok(result);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_blob(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int bytes = sqlite3_column_bytes(stmt_ptr, column);
@@ -189,29 +207,34 @@ lean_obj_res leansqlite_column_blob(b_lean_obj_arg stmt_obj, int32_t column) {
   return lean_io_result_mk_ok(byte_array);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_double(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   double value = sqlite3_column_double(stmt_ptr, column);
   return lean_io_result_mk_ok(lean_box_float(value));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_int(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int32_t value = (int32_t) sqlite3_column_int(stmt_ptr, column);
   return lean_io_result_mk_ok(lean_box(value));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_int64(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int64_t value = sqlite3_column_int64(stmt_ptr, column);
   return lean_io_result_mk_ok(lean_box_uint64(value));
 }
 
+LEANSQLITE_API
 int32_t leansqlite_value_type(b_lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   return sqlite3_value_type(value);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_value_text(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   lean_dec(value_obj);
@@ -220,6 +243,7 @@ lean_obj_res leansqlite_value_text(lean_obj_arg value_obj) {
   return lean_io_result_mk_ok(result);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_value_blob(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   lean_dec(value_obj);
@@ -235,6 +259,7 @@ lean_obj_res leansqlite_value_blob(lean_obj_arg value_obj) {
   return lean_io_result_mk_ok(byte_array);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_value_double(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   lean_dec(value_obj);
@@ -242,6 +267,7 @@ lean_obj_res leansqlite_value_double(lean_obj_arg value_obj) {
   return lean_io_result_mk_ok(lean_box_float(result));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_value_int64(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   lean_dec(value_obj);
@@ -249,18 +275,21 @@ lean_obj_res leansqlite_value_int64(lean_obj_arg value_obj) {
   return lean_io_result_mk_ok(lean_box_uint64(result));
 }
 
+LEANSQLITE_API
 uint32_t leansqlite_column_count(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int count = sqlite3_column_count(stmt_ptr);
   return (uint32_t) count;
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_type(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int32_t type_code = sqlite3_column_type(stmt_ptr, column);
   return lean_io_result_mk_ok(lean_box(type_code));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_sql(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *sql = sqlite3_sql(stmt_ptr);
@@ -274,6 +303,7 @@ lean_obj_res leansqlite_sql(b_lean_obj_arg stmt_obj) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_expanded_sql(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   char *sql = sqlite3_expanded_sql(stmt_ptr);
@@ -290,12 +320,14 @@ lean_obj_res leansqlite_expanded_sql(b_lean_obj_arg stmt_obj) {
 }
 
 // TODO test
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_parameter_count(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   return lean_io_result_mk_ok(lean_box_uint32(sqlite3_bind_parameter_count(stmt_ptr)));
 }
 
 // TODO test
+LEANSQLITE_API
 int32_t leansqlite_bind_parameter_index(b_lean_obj_arg stmt_obj, lean_obj_arg name) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name_cstr = lean_string_cstr(name);
@@ -303,6 +335,7 @@ int32_t leansqlite_bind_parameter_index(b_lean_obj_arg stmt_obj, lean_obj_arg na
   return sqlite3_bind_parameter_index(stmt_ptr, name_cstr);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_parameter_name(b_lean_obj_arg stmt_obj, int32_t i) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_bind_parameter_name(stmt_ptr, i);
@@ -315,6 +348,7 @@ lean_obj_res leansqlite_bind_parameter_name(b_lean_obj_arg stmt_obj, int32_t i) 
 // Uses standard return convention: lean_obj_res
 // connection is borrowed: b_lean_obj_arg
 // Returns false (0) if in a transaction, true (1) if NOT in a transaction
+LEANSQLITE_API
 lean_obj_res leansqlite_get_autocommit(b_lean_obj_arg connection) {
   sqlite3 *db = leansqlite_get_connection(connection);
   int autocommit = sqlite3_get_autocommit(db);
@@ -325,6 +359,7 @@ lean_obj_res leansqlite_get_autocommit(b_lean_obj_arg connection) {
 // connection is borrowed: b_lean_obj_arg
 // dbName is consumed: lean_obj_arg
 // Returns the filename of the specified database ("main", "temp", or attachment name)
+LEANSQLITE_API
 lean_obj_res leansqlite_db_filename(b_lean_obj_arg connection, lean_obj_arg dbName) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *dbName_str = lean_string_cstr(dbName);
@@ -335,30 +370,35 @@ lean_obj_res leansqlite_db_filename(b_lean_obj_arg connection, lean_obj_arg dbNa
   return lean_io_result_mk_ok(result);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_total_changes(b_lean_obj_arg connection) {
   sqlite3 *db = leansqlite_get_connection(connection);
   sqlite3_int64 total = sqlite3_total_changes64(db);
   return lean_io_result_mk_ok(lean_box_uint64(total));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_stmt_readonly(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int readonly = sqlite3_stmt_readonly(stmt_ptr);
   return lean_io_result_mk_ok(lean_box(readonly != 0 ? 1 : 0));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_stmt_busy(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int busy = sqlite3_stmt_busy(stmt_ptr);
   return lean_io_result_mk_ok(lean_box(busy != 0 ? 1 : 0));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_data_count(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int count = sqlite3_data_count(stmt_ptr);
   return lean_io_result_mk_ok(lean_box_uint32((uint32_t) count));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_db_readonly(b_lean_obj_arg connection, lean_obj_arg dbName) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *dbName_str = lean_string_cstr(dbName);
@@ -367,6 +407,7 @@ lean_obj_res leansqlite_db_readonly(b_lean_obj_arg connection, lean_obj_arg dbNa
   return lean_io_result_mk_ok(lean_box(readonly));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_table_name(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_column_table_name(stmt_ptr, column);
@@ -374,6 +415,7 @@ lean_obj_res leansqlite_column_table_name(b_lean_obj_arg stmt_obj, int32_t colum
   return lean_io_result_mk_ok(result);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_origin_name(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_column_origin_name(stmt_ptr, column);
@@ -381,6 +423,7 @@ lean_obj_res leansqlite_column_origin_name(b_lean_obj_arg stmt_obj, int32_t colu
   return lean_io_result_mk_ok(result);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_column_database_name(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_column_database_name(stmt_ptr, column);
@@ -388,6 +431,7 @@ lean_obj_res leansqlite_column_database_name(b_lean_obj_arg stmt_obj, int32_t co
   return lean_io_result_mk_ok(result);
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_text(b_lean_obj_arg stmt_obj, int32_t index, lean_obj_arg text) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *text_str = lean_string_cstr(text);
@@ -404,6 +448,7 @@ lean_obj_res leansqlite_bind_text(b_lean_obj_arg stmt_obj, int32_t index, lean_o
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_double(b_lean_obj_arg stmt_obj, int32_t index, double value) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_bind_double(stmt_ptr, index, value);
@@ -416,6 +461,7 @@ lean_obj_res leansqlite_bind_double(b_lean_obj_arg stmt_obj, int32_t index, doub
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_int(b_lean_obj_arg stmt_obj, int32_t index, uint32_t value) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_bind_int(stmt_ptr, index, (int) value);
@@ -428,6 +474,7 @@ lean_obj_res leansqlite_bind_int(b_lean_obj_arg stmt_obj, int32_t index, uint32_
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_int64(b_lean_obj_arg stmt_obj, int32_t index, int64_t value) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_bind_int64(stmt_ptr, index, value);
@@ -440,6 +487,7 @@ lean_obj_res leansqlite_bind_int64(b_lean_obj_arg stmt_obj, int32_t index, int64
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_null(b_lean_obj_arg stmt_obj, int32_t index) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_bind_null(stmt_ptr, index);
@@ -452,6 +500,7 @@ lean_obj_res leansqlite_bind_null(b_lean_obj_arg stmt_obj, int32_t index) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_bind_blob(b_lean_obj_arg stmt_obj, int32_t index, lean_obj_arg blob) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   size_t size = lean_sarray_size(blob);
@@ -470,6 +519,7 @@ lean_obj_res leansqlite_bind_blob(b_lean_obj_arg stmt_obj, int32_t index, lean_o
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_step(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_step(stmt_ptr);
@@ -486,6 +536,7 @@ lean_obj_res leansqlite_step(b_lean_obj_arg stmt_obj) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_reset(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_reset(stmt_ptr);
@@ -498,6 +549,7 @@ lean_obj_res leansqlite_reset(b_lean_obj_arg stmt_obj) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_exec(b_lean_obj_arg connection, lean_obj_arg sql) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *sql_str = lean_string_cstr(sql);
@@ -521,18 +573,21 @@ lean_obj_res leansqlite_exec(b_lean_obj_arg connection, lean_obj_arg sql) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_last_insert_rowid(b_lean_obj_arg connection) {
   sqlite3 *db = leansqlite_get_connection(connection);
   sqlite3_int64 rowid = sqlite3_last_insert_rowid(db);
   return lean_io_result_mk_ok(lean_box_uint64(rowid));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_changes(b_lean_obj_arg connection) {
   sqlite3 *db = leansqlite_get_connection(connection);
   sqlite3_int64 changes = sqlite3_changes64(db);
   return lean_io_result_mk_ok(lean_box_uint64(changes));
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_busy_timeout(b_lean_obj_arg connection, int32_t ms) {
   sqlite3 *db = leansqlite_get_connection(connection);
   int code = sqlite3_busy_timeout(db, ms);
@@ -544,6 +599,7 @@ lean_obj_res leansqlite_busy_timeout(b_lean_obj_arg connection, int32_t ms) {
   }
 }
 
+LEANSQLITE_API
 lean_obj_res leansqlite_clear_bindings(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int code = sqlite3_clear_bindings(stmt_ptr);
@@ -556,8 +612,7 @@ lean_obj_res leansqlite_clear_bindings(b_lean_obj_arg stmt_obj) {
   }
 }
 
-// Uses standard return convention: lean_obj_res
-// stmt_obj is borrowed: b_lean_obj_arg
+LEANSQLITE_API
 lean_obj_res leansqlite_column_name(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_column_name(stmt_ptr, column);
@@ -569,4 +624,15 @@ lean_obj_res leansqlite_column_name(b_lean_obj_arg stmt_obj, int32_t column) {
     lean_object *result = lean_mk_string(name);
     return lean_io_result_mk_ok(result);
   }
+}
+
+LEANSQLITE_API
+lean_obj_res leansqlite_shathree_init(b_lean_obj_arg connection) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  int code = sqlite3_shathree_init(db, NULL, NULL);
+  if (code != SQLITE_OK) {
+    lean_object *msg = lean_mk_string("Failed to initialize SHA3 extension");
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
+  }
+  return lean_io_result_mk_ok(lean_box(0));
 }

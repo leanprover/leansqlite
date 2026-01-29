@@ -60,6 +60,13 @@ KeepEmptyLinesAtTheStartOfBlocks: false
 # Preprocessor
 IndentPPDirectives: None
 
+# Treat LEANSQLITE_API as an attribute macro and break after it
+# Workaround: map to a C++ attribute so BreakAfterAttributes applies
+# See: https://github.com/llvm/llvm-project/issues/117552
+BreakAfterAttributes: Always
+Macros:
+  - LEANSQLITE_API=[[maybe_unused]]
+
 # Keep function arguments aligned
 AlignConsecutiveDeclarations: false
 AlignConsecutiveAssignments: false
