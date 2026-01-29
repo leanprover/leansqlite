@@ -18,6 +18,9 @@ Author: David Thrane Christiansen
 #include <stdio.h>
 #include <string.h>
 
+// Forward declaration for SHA3 extension initialization (defined in shathree.c)
+int sqlite3_shathree_init(sqlite3 *db, char **pzErrMsg, const void *pApi);
+
 void leansqlite_connection_finalize(void *connection) {
   // Uses sqlite3_close instead of sqlite3_close_v2 because uses of the connection will have
   // references to it, so it won't be freed/finalized until they are.
@@ -556,8 +559,6 @@ lean_obj_res leansqlite_clear_bindings(b_lean_obj_arg stmt_obj) {
   }
 }
 
-// Uses standard return convention: lean_obj_res
-// stmt_obj is borrowed: b_lean_obj_arg
 lean_obj_res leansqlite_column_name(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name = sqlite3_column_name(stmt_ptr, column);
@@ -569,4 +570,14 @@ lean_obj_res leansqlite_column_name(b_lean_obj_arg stmt_obj, int32_t column) {
     lean_object *result = lean_mk_string(name);
     return lean_io_result_mk_ok(result);
   }
+}
+
+lean_obj_res leansqlite_shathree_init(b_lean_obj_arg connection) {
+  sqlite3 *db = leansqlite_get_connection(connection);
+  int code = sqlite3_shathree_init(db, NULL, NULL);
+  if (code != SQLITE_OK) {
+    lean_object *msg = lean_mk_string("Failed to initialize SHA3 extension");
+    return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
+  }
+  return lean_io_result_mk_ok(lean_box(0));
 }

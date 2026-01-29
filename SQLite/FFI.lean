@@ -167,3 +167,10 @@ opaque columnDatabaseName : @&Stmt → Int32 → IO String
 
 @[extern "leansqlite_column_name"]
 opaque columnName : @&Stmt → Int32 → IO String
+
+namespace Extensions
+
+@[extern "leansqlite_shathree_init"]
+opaque shathreeInit : @&Conn → IO Unit
+
+end Extensions

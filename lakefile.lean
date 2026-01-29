@@ -37,11 +37,18 @@ target leansqlite.o pkg : FilePath := do
   let weakArgs := #["-I", (← getLeanIncludeDir).toString, "-I", sqliteHeaders.toString]
   buildO oFile srcJob weakArgs (traceArgs := #["-fPIC"]) (extraDepTrace := getLeanTrace)
 
+target shathree.o pkg : FilePath := do
+  let oFile := pkg.buildDir / "shathree.o"
+  let srcJob ← inputTextFile <| pkg.dir / "bindings" / "shathree.c"
+  let weakArgs := #["-I", (pkg.dir / "bindings").toString, "-DSQLITE_CORE"]
+  buildO oFile srcJob weakArgs (traceArgs := #["-fPIC"]) (extraDepTrace := getLeanTrace)
+
 extern_lib leansqlite pkg := do
   let sqliteObj ← sqlite.o.fetch
   let leansqliteObj ← leansqlite.o.fetch
+  let shathreeObj ← shathree.o.fetch
   let libFile := "leansqlite"
-  buildStaticLib (pkg.staticLibDir / nameToStaticLib libFile) #[sqliteObj, leansqliteObj]
+  buildStaticLib (pkg.staticLibDir / nameToStaticLib libFile) #[sqliteObj, leansqliteObj, shathreeObj]
 
 @[default_target]
 lean_lib SQLite where
