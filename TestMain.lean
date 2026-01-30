@@ -7,7 +7,7 @@ import SQLite
 import SQLiteTest
 
 open SQLite
-open SQLite.Test SQLite.Test.Sha3
+open SQLite.Test SQLite.Test.Sha3 SQLite.Test.Deriving
 
 def testBasicInserts (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Basic Inserts ===" do
@@ -1454,6 +1454,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testColumnMetadata db
     testColumnName db
     runSha3Tests db
+    runDerivingTests db
   ).run config).run headerRef).run initialStats
 
   -- Print summary
