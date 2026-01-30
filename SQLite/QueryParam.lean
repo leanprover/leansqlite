@@ -55,6 +55,9 @@ instance.
 public def QueryParam.asBlob [ToBinary α] : QueryParam α where
   bind stmt i x := Stmt.bindBlob stmt i (toBinary x)
 
+public instance [QueryParam α] : QueryParam (@Subtype α p) where
+  bind stmt i x := QueryParam.bind stmt i x.val
+
 /--
 Provides a canonical means of binding a potentially null value of type {name}`α` in a SQLite query.
 -/
