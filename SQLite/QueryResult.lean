@@ -147,7 +147,7 @@ public instance : Iterator (QueryIterator β) IO β where
 
 public instance [Monad n] : IteratorLoop (QueryIterator β) IO n := IteratorLoop.defaultImplementation
 
--- Compatibility shim for 4.27.0-rc1
+-- Compatibility shim for 4.27.0
 open Lean Elab Command in
 #eval show CommandElabM Unit from do
   if (← getEnv).contains `Std.Iterators.IteratorCollect then
