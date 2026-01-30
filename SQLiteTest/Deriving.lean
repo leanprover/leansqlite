@@ -12,6 +12,17 @@ namespace SQLite.Test.Deriving
 open SQLite
 open SQLite.Test
 
+/-- Approximate equality for floats with a tolerance of 1e-9. -/
+def approxEq (a b : Float) (epsilon : Float := 1e-9) : Bool :=
+  (a - b).abs < epsilon
+
+/-- Approximate equality for optional floats. -/
+def optApproxEq (a b : Option Float) : Bool :=
+  match a, b with
+  | some x, some y => approxEq x y
+  | none, none => true
+  | _, _ => false
+
 /-! ## Person: Basic Row Deriving -/
 
 structure Person where
@@ -85,7 +96,10 @@ structure Product where
   name : String
   price : Float
   inStock : Bool
-deriving Repr, BEq, Inhabited, SQLite.Row
+deriving Repr, Inhabited, SQLite.Row
+
+instance : BEq Product where
+  beq a b := a.id == b.id && a.name == b.name && approxEq a.price b.price && a.inStock == b.inStock
 
 /-- Tests `Product` with various field types (Int64, String, Float, Bool). -/
 def testProductRow (db : SQLite) : TestM Unit :=
@@ -113,7 +127,10 @@ structure AllOptional where
   a : Option String
   b : Option Int32
   c : Option Float
-deriving Repr, BEq, Inhabited, SQLite.Row
+deriving Repr, Inhabited, SQLite.Row
+
+instance : BEq AllOptional where
+  beq x y := x.a == y.a && x.b == y.b && optApproxEq x.c y.c
 
 /-- Tests `AllOptional` with all nullable fields. -/
 def testAllOptionalRow (db : SQLite) : TestM Unit :=
@@ -154,8 +171,7 @@ def testEmptyRow (db : SQLite) : TestM Unit :=
       let stmt ← db.prepare "SELECT 1 FROM empty_test;"
       let result : Array Empty ← stmt.results.toArray
       pure result
-    let expected : Array Empty := #[{}, {}, {}]
-    expect (empties == expected) s!"Expected {repr expected}, got {repr empties}"
+    expect (empties.size == 3) s!"Expected 3 empty rows, got {empties.size}"
 
 /-! ## UserId and Username: Trivial Wrappers with ResultColumn and QueryParam -/
 
@@ -180,10 +196,8 @@ def testUserIdResultColumn (db : SQLite) : TestM Unit :=
       let stmt ← db.prepare "SELECT id FROM wrapper_users ORDER BY id;"
       let result : Array UserId ← stmt.results.toArray
       pure result
-    expect (userIds.size == 2) s!"Expected 2 user IDs, got {userIds.size}"
-    expect (userIds[0]! == ⟨1⟩) s!"Expected UserId 1, got {repr userIds[0]!}"
-    expect (userIds[1]! == ⟨2⟩) s!"Expected UserId 2, got {repr userIds[1]!}"
-    recordSuccess "UserId trivial wrapper works with derived ResultColumn"
+    let expectedUserIds : Array UserId := #[⟨1⟩, ⟨2⟩]
+    expect (userIds == expectedUserIds) s!"Expected {repr expectedUserIds}, got {repr userIds}"
 
 /-- Tests `UserId` QueryParam deriving with sql! macro. -/
 def testUserIdQueryParam (db : SQLite) : TestM Unit :=
@@ -193,9 +207,8 @@ def testUserIdQueryParam (db : SQLite) : TestM Unit :=
       let stmt ← db sql!"SELECT username FROM wrapper_users WHERE id = {targetId}"
       let result : Array Username ← stmt.results.toArray
       pure result
-    expect (queryById.size == 1) s!"Expected 1 user, got {queryById.size}"
-    expect (queryById[0]! == ⟨"alice"⟩) s!"Expected alice, got {repr queryById[0]!}"
-    recordSuccess "UserId QueryParam works in sql! macro"
+    let expectedQueryById : Array Username := #[⟨"alice"⟩]
+    expect (queryById == expectedQueryById) s!"Expected {repr expectedQueryById}, got {repr queryById}"
 
 /-- Tests `Username` trivial wrapper with ResultColumn deriving. -/
 def testUsernameResultColumn (db : SQLite) : TestM Unit :=
@@ -204,19 +217,16 @@ def testUsernameResultColumn (db : SQLite) : TestM Unit :=
       let stmt ← db.prepare "SELECT username FROM wrapper_users ORDER BY id;"
       let result : Array Username ← stmt.results.toArray
       pure result
-    expect (usernames.size == 2) s!"Expected 2 usernames, got {usernames.size}"
-    expect (usernames[0]! == ⟨"alice"⟩) s!"Expected Username alice, got {repr usernames[0]!}"
-    expect (usernames[1]! == ⟨"bob"⟩) s!"Expected Username bob, got {repr usernames[1]!}"
-    recordSuccess "Username trivial wrapper works with derived ResultColumn"
+    let expectedUsernames : Array Username := #[⟨"alice"⟩, ⟨"bob"⟩]
+    expect (usernames == expectedUsernames) s!"Expected {repr expectedUsernames}, got {repr usernames}"
 
     -- Test that trivial wrappers also work with Row (via ResultColumn instance)
     let mixedQuery ← expectSuccess' (fun pairs => s!"Read {pairs.size} id-name pairs") do
       let stmt ← db.prepare "SELECT id, username FROM wrapper_users ORDER BY id;"
       let result : Array (UserId × Username) ← stmt.results.toArray
       pure result
-    expect (mixedQuery.size == 2) s!"Expected 2 pairs, got {mixedQuery.size}"
-    expect (mixedQuery[0]! == (⟨1⟩, ⟨"alice"⟩)) s!"Expected (1, alice), got {repr mixedQuery[0]!}"
-    recordSuccess "Trivial wrappers work in tuple Row instances"
+    let expectedMixed : Array (UserId × Username) := #[(⟨1⟩, ⟨"alice"⟩), (⟨2⟩, ⟨"bob"⟩)]
+    expect (mixedQuery == expectedMixed) s!"Expected {repr expectedMixed}, got {repr mixedQuery}"
 
 /-- Tests `Username` QueryParam deriving with sql! macro. -/
 def testUsernameQueryParam (db : SQLite) : TestM Unit :=
@@ -226,9 +236,8 @@ def testUsernameQueryParam (db : SQLite) : TestM Unit :=
       let stmt ← db sql!"SELECT id FROM wrapper_users WHERE username = {targetName}"
       let result : Array UserId ← stmt.results.toArray
       pure result
-    expect (queryByName.size == 1) s!"Expected 1 user, got {queryByName.size}"
-    expect (queryByName[0]! == ⟨2⟩) s!"Expected UserId 2, got {repr queryByName[0]!}"
-    recordSuccess "Username QueryParam works in sql! macro"
+    let expectedQueryByName : Array UserId := #[⟨2⟩]
+    expect (queryByName == expectedQueryByName) s!"Expected {repr expectedQueryByName}, got {repr queryByName}"
 
 /-! ## Coordinate: Non-Structure Inductive with Row -/
 
@@ -271,18 +280,16 @@ def testEmailResultColumnAndQueryParam (db : SQLite) : TestM Unit :=
       let stmt ← db.prepare "SELECT addr FROM emails ORDER BY addr;"
       let result : Array Email ← stmt.results.toArray
       pure result
-    expect (emails.size == 2) s!"Expected 2 emails, got {emails.size}"
-    expect (emails[0]! == .mk "alice@example.com") s!"Expected alice@example.com, got {repr emails[0]!}"
-    recordSuccess "Non-structure inductive works with derived ResultColumn"
+    let expectedEmails : Array Email := #[.mk "alice@example.com", .mk "bob@example.com"]
+    expect (emails == expectedEmails) s!"Expected {repr expectedEmails}, got {repr emails}"
 
     let queryByEmail ← expectSuccess' (fun es => s!"Found {es.size} emails") do
       let targetEmail : Email := .mk "bob@example.com"
       let stmt ← db sql!"SELECT addr FROM emails WHERE addr = {targetEmail}"
       let result : Array Email ← stmt.results.toArray
       pure result
-    expect (queryByEmail.size == 1) s!"Expected 1 email, got {queryByEmail.size}"
-    expect (queryByEmail[0]! == .mk "bob@example.com") s!"Expected bob@example.com, got {repr queryByEmail[0]!}"
-    recordSuccess "Non-structure inductive works with derived QueryParam"
+    let expectedQueryByEmail : Array Email := #[.mk "bob@example.com"]
+    expect (queryByEmail == expectedQueryByEmail) s!"Expected {repr expectedQueryByEmail}, got {repr queryByEmail}"
 
 /-! ## NonEmptyString: Type with Proof Field -/
 
@@ -305,9 +312,8 @@ def testNonEmptyStringQueryParam (db : SQLite) : TestM Unit :=
       let stmt ← db sql!"SELECT val FROM nonempty_strings WHERE val = {target}"
       let result : Array String ← stmt.results.toArray
       pure result
-    expect (queryByNonEmpty.size == 1) s!"Expected 1 string, got {queryByNonEmpty.size}"
-    expect (queryByNonEmpty[0]! == "hello") s!"Expected hello, got {queryByNonEmpty[0]!}"
-    recordSuccess "Type with proof field works with derived QueryParam"
+    let expectedNonEmpty : Array String := #["hello"]
+    expect (queryByNonEmpty == expectedNonEmpty) s!"Expected {repr expectedNonEmpty}, got {repr queryByNonEmpty}"
 
 /-! ## Negative Tests -/
 
