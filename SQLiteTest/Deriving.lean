@@ -336,16 +336,7 @@ Unlike `QueryParam` which can ignore proof fields (since it only sends data to S
 no way to synthesize the proof required by the constructor.
 -/
 
-/--
-error: Application type mismatch: The argument
-  ProofFieldForRow.mk
-has type
-  (val : Int32) → val ≥ 0 → ProofFieldForRow
-but is expected to have type
-  ?m.16 → ?m.20 → ProofFieldForRow
-in the application
-  pure ProofFieldForRow.mk
--/
+/-- error: None of the deriving handlers for class `Row` applied to `ProofFieldForRow` -/
 #guard_msgs in
 structure ProofFieldForRow where
   val : Int32

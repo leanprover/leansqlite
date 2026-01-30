@@ -23,13 +23,11 @@ namespace SQLite
 open Lean Elab Meta Parser Term Command
 open Elab.Deriving
 
-variable [Monad m] [MonadEnv m] [MonadError m]
-
 /--
 Returns the number of explicit (non-implicit, non-instance) parameters for a constructor,
 excluding the inductive type's parameters.
 -/
-private def getCtorFieldCount (ctorName : Name) : m Nat := do
+private def getCtorFieldCount (ctorName : Name) : MetaM Nat := do
   let ctorInfo ← getConstInfoCtor ctorName
   -- numFields is the number of fields excluding the inductive type's parameters
   return ctorInfo.numFields
@@ -60,6 +58,24 @@ private def analyzeCtorFields (ctorName : Name) : MetaM CtorFieldInfo := do
       if !(← isProp argType) then
         dataIndices := dataIndices.push i
     return { totalFields := fieldArgs.size, dataFieldIndices := dataIndices }
+
+/--
+Checks whether any constructor field's type depends on a previous field.
+Returns {name}`true` if there are no dependencies, which means {name}`Row` can be derived.
+-/
+private def hasNoFieldDependencies (ctorName : Name) : MetaM Bool := do
+  let ctorInfo ← getConstInfoCtor ctorName
+  forallTelescopeReducing ctorInfo.type fun args _ => do
+    let fieldArgs := args[ctorInfo.numParams:].toArray
+    -- Collect the FVarIds of all previous fields
+    let mut prevFVars : Std.HashSet FVarId := {}
+    for i in [:fieldArgs.size] do
+      let argType ← inferType fieldArgs[i]!
+      -- Check if this field's type mentions any previous field
+      if argType.hasAnyFVar (prevFVars.contains ·) then
+        return false
+      prevFVars := prevFVars.insert fieldArgs[i]!.fvarId!
+    return true
 
 /--
 Returns true if the inductive type has exactly one constructor.
@@ -157,15 +173,18 @@ private def mkRowInstanceCmds (ctx : Deriving.Context) (typeNames : Array Name) 
 /--
 The main deriving handler for the {name}`Row` type class.
 
-This handler supports any single-constructor inductive type. Each constructor parameter
-is read sequentially using its {name}`ResultColumn` instance.
+This handler supports any single-constructor inductive type where no field's type
+depends on a previous field. Each constructor parameter is read sequentially using
+its {name}`ResultColumn` instance.
 -/
 def mkRowInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
   let env ← getEnv
-  -- Only handle single-constructor inductives
+  -- Only handle single-constructor inductives with no field dependencies
   if ← declNames.allM fun name => do
     let some indVal := getInductiveVal? env name | return false
-    return isSingleConstructor indVal
+    if !isSingleConstructor indVal then return false
+    -- Check that no field's type depends on a previous field
+    liftTermElabM <| hasNoFieldDependencies indVal.ctors[0]!
   then
     let ctx ← liftTermElabM <| mkContext ``Row "row" declNames[0]!
     let auxFunCmd ← liftTermElabM <| mkRowAuxFunction ctx 0
