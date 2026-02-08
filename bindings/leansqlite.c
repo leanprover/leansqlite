@@ -117,9 +117,9 @@ lean_obj_res leansqlite_initialize() {
 LEANSQLITE_API
 lean_obj_res leansqlite_open(lean_obj_arg filename) {
   const char *filename_str = lean_string_cstr(filename);
-  lean_dec(filename);
   sqlite3 *db;
   int code = sqlite3_open(filename_str, &db);
+  lean_dec(filename);
   if (code != SQLITE_OK) {
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
     sqlite3_close(db);
@@ -136,7 +136,6 @@ lean_obj_res leansqlite_open(lean_obj_arg filename) {
 LEANSQLITE_API
 lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_arg vfs) {
   const char *filename_str = lean_string_cstr(filename);
-  lean_dec(filename);
 
   const char *vfs_str = NULL;
   // checks for none vs some: none is a scalar
@@ -144,10 +143,11 @@ lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_a
     lean_object *lean_vfs_str = lean_ctor_get(vfs, 0);
     vfs_str = lean_string_cstr(lean_vfs_str);
   }
-  lean_dec(vfs);
 
   sqlite3 *db;
   int code = sqlite3_open_v2(filename_str, &db, flags, vfs_str);
+  lean_dec(filename);
+  lean_dec(vfs);
   if (code != SQLITE_OK) {
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
     sqlite3_close(db);
@@ -161,18 +161,20 @@ LEANSQLITE_API
 lean_obj_res leansqlite_prepare(b_lean_obj_arg connection, lean_obj_arg sql) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *sql_str = lean_string_cstr(sql);
-  lean_dec(sql);
   const char *tail = sql_str;
   // -1 length means to read to the null terminator
   sqlite3_stmt *stmt;
   int code = sqlite3_prepare_v2(db, sql_str, -1, &stmt, &tail);
   if (code != SQLITE_OK) {
+    lean_dec(sql);
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
     // stmt is NULL on error, no need to finalize
     return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
   } else if (tail[0] != '\0') {
+    // tail points into sql's buffer, so we must read it before decrementing sql
     lean_object *msg1 = lean_mk_string("Unprocessed SQL:");
     lean_object *msg2 = lean_mk_string(tail);
+    lean_dec(sql);
     lean_object *msg = lean_string_append(msg1, msg2);
     // lean_string_append borrows only its second argument, and consumes its first, so msg1 doesn't
     // get decremented here.
@@ -180,6 +182,7 @@ lean_obj_res leansqlite_prepare(b_lean_obj_arg connection, lean_obj_arg sql) {
     sqlite3_finalize(stmt);
     return lean_io_result_mk_error(lean_mk_io_error_other_error(code, msg));
   } else {
+    lean_dec(sql);
     return lean_io_result_mk_ok(leansqlite_stmt(stmt));
   }
 }
@@ -331,8 +334,9 @@ LEANSQLITE_API
 int32_t leansqlite_bind_parameter_index(b_lean_obj_arg stmt_obj, lean_obj_arg name) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *name_cstr = lean_string_cstr(name);
+  int32_t result = sqlite3_bind_parameter_index(stmt_ptr, name_cstr);
   lean_dec(name);
-  return sqlite3_bind_parameter_index(stmt_ptr, name_cstr);
+  return result;
 }
 
 LEANSQLITE_API
@@ -363,8 +367,8 @@ LEANSQLITE_API
 lean_obj_res leansqlite_db_filename(b_lean_obj_arg connection, lean_obj_arg dbName) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *dbName_str = lean_string_cstr(dbName);
-  lean_dec(dbName);
   const char *filename = sqlite3_db_filename(db, dbName_str);
+  lean_dec(dbName);
   // sqlite3_db_filename returns NULL if the database name is not found
   lean_object *result = lean_mk_string(filename != NULL ? filename : "");
   return lean_io_result_mk_ok(result);
@@ -402,8 +406,8 @@ LEANSQLITE_API
 lean_obj_res leansqlite_db_readonly(b_lean_obj_arg connection, lean_obj_arg dbName) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *dbName_str = lean_string_cstr(dbName);
-  lean_dec(dbName);
   int readonly = sqlite3_db_readonly(db, dbName_str);
+  lean_dec(dbName);
   return lean_io_result_mk_ok(lean_box(readonly));
 }
 
@@ -435,10 +439,10 @@ LEANSQLITE_API
 lean_obj_res leansqlite_bind_text(b_lean_obj_arg stmt_obj, int32_t index, lean_obj_arg text) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   const char *text_str = lean_string_cstr(text);
-  lean_dec(text);
   // Use SQLITE_TRANSIENT so SQLite makes its own copy of the string
   // NOLINTNEXTLINE(performance-no-int-to-ptr)
   int code = sqlite3_bind_text(stmt_ptr, index, text_str, -1, SQLITE_TRANSIENT);
+  lean_dec(text);
   if (code != SQLITE_OK) {
     sqlite3 *db = sqlite3_db_handle(stmt_ptr);
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
@@ -553,10 +557,10 @@ LEANSQLITE_API
 lean_obj_res leansqlite_exec(b_lean_obj_arg connection, lean_obj_arg sql) {
   sqlite3 *db = leansqlite_get_connection(connection);
   const char *sql_str = lean_string_cstr(sql);
-  lean_dec(sql);
 
   char *err_msg = NULL;
   int code = sqlite3_exec(db, sql_str, NULL, NULL, &err_msg);
+  lean_dec(sql);
 
   if (code != SQLITE_OK) {
     lean_object *msg;

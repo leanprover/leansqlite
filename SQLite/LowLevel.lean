@@ -99,8 +99,8 @@ public def OpenFlags.readWriteCreate : OpenFlags where
 def OpenFlags.toInt (flags : OpenFlags) : Int32 :=
   let { mode, uri, memory, threading } := flags
   mode.toInt |||
-  if uri then 0x00000040 else 0 |||
-  if memory then 0x00000080 else 0 |||
+  (if uri then 0x00000040 else 0) |||
+  (if memory then 0x00000080 else 0) |||
   (threading.map (·.toInt)).getD 0
 
 /--
@@ -306,7 +306,7 @@ public inductive DataType where
   | text : DataType
   | blob : DataType
   | null : DataType
-deriving Repr, BEq, Inhabited, Hashable, Inhabited, Ord
+deriving Repr, BEq, Inhabited, Hashable, Ord
 
 /-- Returns {lean}`true` if the provided type is {name}`DataType.null`. -/
 public def DataType.isNull : DataType → Bool
