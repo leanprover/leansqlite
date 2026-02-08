@@ -247,7 +247,7 @@ private def mkFromBinaryMultiCtorBody (indVal : InductiveVal) : TermElabM Term :
 
   -- Error arm
   let typeName := indVal.name
-  let errorMsg := s!"Expected tag 0...{numCtors} for `{typeName}`, got "
+  let errorMsg := s!"Expected tag 0-{numCtors - 1} for `{typeName}`, got "
   let errorMsgLit := Syntax.mkStrLit errorMsg
   let errorArm ← `(matchAltExpr| | other => throw ($errorMsgLit ++ toString other))
   matchArms := matchArms.push errorArm

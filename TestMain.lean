@@ -448,7 +448,7 @@ def testResultIter (db : SQLite) : TestM Unit :=
     if all == expected then
       recordSuccess "Records matched"
     else
-      recordFailure s!"Duplicate insert should have failed. Expected {repr expected}, got {repr all}"
+      recordFailure s!"Expected {repr expected}, got {repr all}"
 
     let q' ← db sql!"SELECT length_km FROM rivers"
     let mut out := ""
