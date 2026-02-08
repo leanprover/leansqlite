@@ -198,8 +198,11 @@ lean_obj_res leansqlite_column_text(b_lean_obj_arg stmt_obj, int32_t column) {
 LEANSQLITE_API
 lean_obj_res leansqlite_column_blob(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
-  int bytes = sqlite3_column_bytes(stmt_ptr, column);
+  // sqlite3_column_blob must be called before sqlite3_column_bytes to avoid an implicit type
+  // conversion that could invalidate the blob pointer.
+  // See https://www.sqlite.org/c3ref/column_blob.html ("safest policy")
   const void *blob = sqlite3_column_blob(stmt_ptr, column);
+  int bytes = sqlite3_column_bytes(stmt_ptr, column);
 
   // Allocate ByteArray
   lean_object *byte_array = lean_alloc_sarray(1, bytes, bytes);
@@ -221,7 +224,7 @@ LEANSQLITE_API
 lean_obj_res leansqlite_column_int(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int32_t value = (int32_t) sqlite3_column_int(stmt_ptr, column);
-  return lean_io_result_mk_ok(lean_box(value));
+  return lean_io_result_mk_ok(lean_box((uint32_t) value));
 }
 
 LEANSQLITE_API
@@ -250,8 +253,11 @@ LEANSQLITE_API
 lean_obj_res leansqlite_value_blob(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
   lean_dec(value_obj);
-  int bytes = sqlite3_value_bytes(value);
+  // sqlite3_value_blob must be called before sqlite3_value_bytes to avoid an implicit type
+  // conversion that could invalidate the blob pointer.
+  // See https://www.sqlite.org/c3ref/column_blob.html ("safest policy")
   const void *blob = sqlite3_value_blob(value);
+  int bytes = sqlite3_value_bytes(value);
 
   // Allocate ByteArray
   lean_object *byte_array = lean_alloc_sarray(1, bytes, bytes);
@@ -289,7 +295,7 @@ LEANSQLITE_API
 lean_obj_res leansqlite_column_type(b_lean_obj_arg stmt_obj, int32_t column) {
   sqlite3_stmt *stmt_ptr = stmt(stmt_obj);
   int32_t type_code = sqlite3_column_type(stmt_ptr, column);
-  return lean_io_result_mk_ok(lean_box(type_code));
+  return lean_io_result_mk_ok(lean_box((uint32_t) type_code));
 }
 
 LEANSQLITE_API
@@ -408,7 +414,7 @@ lean_obj_res leansqlite_db_readonly(b_lean_obj_arg connection, lean_obj_arg dbNa
   const char *dbName_str = lean_string_cstr(dbName);
   int readonly = sqlite3_db_readonly(db, dbName_str);
   lean_dec(dbName);
-  return lean_io_result_mk_ok(lean_box(readonly));
+  return lean_io_result_mk_ok(lean_box((uint32_t) readonly));
 }
 
 LEANSQLITE_API
