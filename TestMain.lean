@@ -1416,7 +1416,11 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
   let (successes, failures) ← Test.Blob.runBlobTests
   if failures > 0 then config.report s!"{failures} blob serialization tests failed"
 
-  let mut initialStats : Stats := { successes, failures }
+  config.report "=== Testing blob deriving serialization ==="
+  let (blobDerivSuccesses, blobDerivFailures) ← BlobDeriving.runBlobDerivingTests
+  if blobDerivFailures > 0 then config.report s!"{blobDerivFailures} blob deriving serialization tests failed"
+
+  let mut initialStats : Stats := { successes := successes + blobDerivSuccesses, failures := failures + blobDerivFailures }
 
   let headerRef ← IO.mkRef (none : Option String)
 

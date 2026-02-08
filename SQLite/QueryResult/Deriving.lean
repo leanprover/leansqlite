@@ -306,5 +306,3 @@ def mkQueryParamInstanceHandler (declNames : Array Name) : CommandElabM Bool := 
 
 initialize
   registerDerivingHandler ``QueryParam mkQueryParamInstanceHandler
-
-end SQLite
