@@ -328,14 +328,12 @@ lean_obj_res leansqlite_expanded_sql(b_lean_obj_arg stmt_obj) {
   }
 }
 
-// TODO test
 LEANSQLITE_API
 lean_obj_res leansqlite_bind_parameter_count(b_lean_obj_arg stmt_obj) {
   sqlite3_stmt *stmt_ptr = leansqlite_get_stmt(stmt_obj);
   return lean_io_result_mk_ok(lean_box_uint32(sqlite3_bind_parameter_count(stmt_ptr)));
 }
 
-// TODO test
 LEANSQLITE_API
 int32_t leansqlite_bind_parameter_index(b_lean_obj_arg stmt_obj, lean_obj_arg name) {
   sqlite3_stmt *stmt_ptr = leansqlite_get_stmt(stmt_obj);
