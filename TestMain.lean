@@ -443,8 +443,8 @@ def testResultIter (db : SQLite) : TestM Unit :=
       insertStmt.exec
 
     let q ← db sql!"SELECT name, length_km FROM rivers ORDER BY length_km"
-    let all : Array (String × Nat) ← q.results.toArray
-    let expected := #[("Mississippi", 3766), ("Amazon", 6400), ("Nile", 6650)]
+    let all : Array (String × Float) ← q.results.toArray
+    let expected := #[("Mississippi", 3766.0), ("Amazon", 6400.0), ("Nile", 6650.0)]
     if all == expected then
       recordSuccess "Records matched"
     else
@@ -456,6 +456,25 @@ def testResultIter (db : SQLite) : TestM Unit :=
       out := out ++ l ++ "\n"
     let expected := "6400.0\n6650.0\n3766.0\n"
     expect (out == expected) s!"Expected {expected.quote} but got {out.quote}"
+
+def testLargeNat (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Large Nat Round-Trip ===" do
+    db.exec "CREATE TABLE IF NOT EXISTS nat_test (id INTEGER PRIMARY KEY, value TEXT);"
+    db.exec "DELETE FROM nat_test;"
+
+    -- A Nat larger than 2^64
+    let bigNat : Nat := 2 ^ 256 + 42
+
+    expectSuccess "Inserted large Nat" do
+      let s ← db sql!"INSERT INTO nat_test (id, value) VALUES (1, {bigNat})"
+      s.exec
+
+    let q ← db sql!"SELECT value FROM nat_test WHERE id = 1"
+    if ← q.step then
+      let result : Nat ← ResultColumn.get q 0
+      expect (result == bigNat) s!"Expected {bigNat}, got {result}"
+    else
+      recordFailure "No row returned"
 
 def testTransactions (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Transactions ===" do
@@ -1439,6 +1458,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testInterpolation db
     testNullableParams db
     testResultIter db
+    testLargeNat db
     testTransactions db
     testLastInsertRowId db
     testChanges db

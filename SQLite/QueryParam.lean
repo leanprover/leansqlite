@@ -44,9 +44,6 @@ public instance : QueryParam Unit where
 public instance : QueryParam Bool where
   bind stmt index b := Stmt.bindInt32 stmt index (if b then 1 else 0)
 
-public instance : QueryParam Nat where
-  bind stmt i n := Stmt.bindText stmt i (toString n)
-
 open Blob in
 /--
 Defines an instance that binds a parameter as a binary blob, according to its {name}`ToBinary`
@@ -54,6 +51,9 @@ instance.
 -/
 public def QueryParam.asBlob [ToBinary α] : QueryParam α where
   bind stmt i x := Stmt.bindBlob stmt i (toBinary x)
+
+open Blob in
+public instance : QueryParam Nat := QueryParam.asBlob
 
 public instance [QueryParam α] : QueryParam (@Subtype α p) where
   bind stmt i x := QueryParam.bind stmt i x.val
