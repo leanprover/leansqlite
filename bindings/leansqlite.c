@@ -243,21 +243,21 @@ int32_t leansqlite_value_type(b_lean_obj_arg value_obj) {
 LEANSQLITE_API
 lean_obj_res leansqlite_value_text(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
-  lean_dec(value_obj);
   const unsigned char *text = sqlite3_value_text(value);
   lean_object *result = lean_mk_string(text != NULL ? (const char *) text : "");
+  lean_dec(value_obj);
   return lean_io_result_mk_ok(result);
 }
 
 LEANSQLITE_API
 lean_obj_res leansqlite_value_blob(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
-  lean_dec(value_obj);
   // sqlite3_value_blob must be called before sqlite3_value_bytes to avoid an implicit type
   // conversion that could invalidate the blob pointer.
   // See https://www.sqlite.org/c3ref/column_blob.html ("safest policy")
   const void *blob = sqlite3_value_blob(value);
   int bytes = sqlite3_value_bytes(value);
+  lean_dec(value_obj);
 
   // Allocate ByteArray
   lean_object *byte_array = lean_alloc_sarray(1, bytes, bytes);
@@ -271,16 +271,16 @@ lean_obj_res leansqlite_value_blob(lean_obj_arg value_obj) {
 LEANSQLITE_API
 lean_obj_res leansqlite_value_double(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
-  lean_dec(value_obj);
   double result = sqlite3_value_double(value);
+  lean_dec(value_obj);
   return lean_io_result_mk_ok(lean_box_float(result));
 }
 
 LEANSQLITE_API
 lean_obj_res leansqlite_value_int64(lean_obj_arg value_obj) {
   sqlite3_value *value = leansqlite_get_value(value_obj);
-  lean_dec(value_obj);
   int64_t result = sqlite3_value_int64(value);
+  lean_dec(value_obj);
   return lean_io_result_mk_ok(lean_box_uint64(result));
 }
 
