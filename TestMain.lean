@@ -476,6 +476,32 @@ def testLargeNat (db : SQLite) : TestM Unit :=
     else
       recordFailure "No row returned"
 
+def testBoolRoundTrip (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Bool Round-Trip ===" do
+    db.exec "CREATE TABLE IF NOT EXISTS bool_test (id INTEGER PRIMARY KEY, flag INTEGER);"
+    db.exec "DELETE FROM bool_test;"
+
+    -- Insert true and false via QueryParam Bool
+    let t : Bool := true
+    let f : Bool := false
+    (← db sql!"INSERT INTO bool_test (id, flag) VALUES (1, {t})").exec
+    (← db sql!"INSERT INTO bool_test (id, flag) VALUES (2, {f})").exec
+    recordSuccess "Inserted Bool values"
+
+    -- Read back via ResultColumn Bool
+    let q ← db sql!"SELECT flag FROM bool_test ORDER BY id"
+    if ← q.step then
+      let v1 : Bool ← ResultColumn.get q 0
+      expect (v1 == true) s!"Expected true, got {v1}"
+      if ← q.step then
+        let v2 : Bool ← ResultColumn.get q 0
+        expect (v2 == false) s!"Expected false, got {v2}"
+        recordSuccess "Bool round-trip correct (true → true, false → false)"
+      else
+        recordFailure "Missing second row"
+    else
+      recordFailure "Missing first row"
+
 def testTransactions (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Transactions ===" do
     -- Create a test table
@@ -1495,6 +1521,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testNullableParams db
     testResultIter db
     testLargeNat db
+    testBoolRoundTrip db
     testTransactions db
     testLastInsertRowId db
     testChanges db
