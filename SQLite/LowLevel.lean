@@ -645,7 +645,8 @@ public def transaction (db : SQLite) (action : IO α) (mode : TransactionMode :=
     commit db
     return result
   catch e =>
-    rollback db
+    try rollback db
+    catch e' => throw (.userError s!"Rollback failed: {e'}\nOriginal error: {e}")
     throw e
 
 /--
