@@ -991,13 +991,13 @@ def testDbFilename (dbPath : System.FilePath) : TestM Unit :=
 
 def testTotalChanges (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Total Changes ===" do
-    -- Get initial total changes
-    let initialTotal ← db.totalChanges
-    verbose do report s!"  Initial total changes: {initialTotal}"
-
-    -- Make some changes
+    -- Set up test table and clear any existing data before measuring changes
     db.exec "CREATE TABLE IF NOT EXISTS total_test (id INTEGER, value TEXT);"
     db.exec "DELETE FROM total_test;"
+
+    -- Get initial total changes after setup, so prior state doesn't affect deltas
+    let initialTotal ← db.totalChanges
+    verbose do report s!"  Initial total changes: {initialTotal}"
 
     db.exec "INSERT INTO total_test (id, value) VALUES (1, 'a');"
     db.exec "INSERT INTO total_test (id, value) VALUES (2, 'b');"
