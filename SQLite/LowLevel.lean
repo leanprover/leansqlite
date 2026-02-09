@@ -453,7 +453,7 @@ public def clearBindings (stmt : Stmt) : IO Unit :=
 Returns the type of a column in the result set.
 
 The type is only meaningful if no automatic type conversions have occurred for the value in
-question. After a type conversion, the result of calling sqlite3_column_type() is undefined, though
+question. After a type conversion, the result of calling `sqlite3_column_type()` is undefined, though
 harmless.
 -/
 public def columnType (stmt : Stmt) (column : Int32) : IO Value.DataType := do

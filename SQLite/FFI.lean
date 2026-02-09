@@ -24,12 +24,14 @@ public instance : Repr Conn where
   reprPrec _ _ := "#<sqlite3 *>"
 
 
--- The Stmt type is a representation of a C pointer to a SQLite statement. It is private because
--- it's only valid as long as the connection lasts. The wrapper in `LowLevel.lean` ensures that the
--- connection is retained along with it. While the DB is opened in a way that causes it to return
--- SQLITE_BUSY if closed with active statements, we don't have a way to recover from that, so
--- there's a risk of leaking connections.
-private def Stmt : Type := T.type
+-- The Stmt type is a representation of a C pointer to a SQLite statement. It is not private because
+-- this causes issues with inlining, where clients would need to `import all`. However, it should be
+-- treated as internal, and all operations on it are private. This is because it's only valid as
+-- long as the connection lasts. The wrapper in `LowLevel.lean` ensures that the connection is
+-- retained along with it. While the DB is opened in a way that causes it to return SQLITE_BUSY if
+-- closed with active statements, we don't have a way to recover from that, so there's a risk of
+-- leaking connections.
+def Stmt : Type := T.type
 deriving Nonempty
 
 private instance : Repr Stmt where
