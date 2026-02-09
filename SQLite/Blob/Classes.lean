@@ -193,7 +193,7 @@ public instance : FromBinary Int where
     match (← .byte) with
     | 0 => .ofNat <$> FromBinary.deserializer
     | 1 => .negSucc <$> FromBinary.deserializer
-    | other => throw s!"Expected tag 0...2 for `Int`, got {other}"
+    | other => throw s!"Expected tag 0 or 1 for `Int`, got {other}"
 
 public instance : ToBinary Char := .via Char.val
 
@@ -224,12 +224,12 @@ public instance [FromBinary α] : FromBinary (Option α) where
     match (← .byte) with
     | 0 => return none
     | 1 => some <$> FromBinary.deserializer
-    | other => throw s!"Expected 0...2 for `Option`, got {other}"
+    | other => throw s!"Expected 0 or 1 for `Option`, got {other}"
 
 public instance [ToBinary α] {p : α → Prop} : ToBinary (Subtype p) := .via Subtype.val
 
 public instance {p : α → Prop} [DecidablePred p] [FromBinary α] : FromBinary (Subtype p) := .viaExcept fun x =>
-  if h : p x then return ⟨x, h⟩ else throw "Predicate not satsified for subtype"
+  if h : p x then return ⟨x, h⟩ else throw "Predicate not satisfied for subtype"
 
 public instance {β : α → Type v} [ToBinary α] [{x : α} → ToBinary (β x)] : ToBinary (Sigma β) where
   serializer
@@ -331,7 +331,7 @@ where
       have : FromBinary Lean.Json := ⟨go⟩
       let contents : Array (String × Lean.Json) ← FromBinary.deserializer
       return .obj <| .ofArray contents
-    | other => throw s!"Expected tag 0...7 for `Json`, got {other}"
+    | other => throw s!"Expected tag 0-6 for `Json`, got {other}"
 
 public def ToBinary.viaJson [Lean.ToJson α] : ToBinary α := via Lean.ToJson.toJson
 

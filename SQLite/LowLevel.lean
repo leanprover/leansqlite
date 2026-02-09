@@ -576,9 +576,9 @@ public def dbFilename (db : SQLite) (dbName : String := "main") : IO (Option Sys
 Database access mode returned by {lit}`dbReadonly`.
 -/
 public inductive AccessMode where
-  /-- The database is read-only. -/
-  | readWrite : AccessMode
   /-- The database is read-write. -/
+  | readWrite : AccessMode
+  /-- The database is read-only. -/
   | readOnly : AccessMode
 deriving Repr, BEq, Hashable, DecidableEq, Inhabited, Ord
 
