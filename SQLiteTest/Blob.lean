@@ -147,7 +147,7 @@ where
         .text <$> arbitrary
       ]
     | n + 1 => do
-      oneOf #[
+      let gens := #[
         pure .nil,
         pure .line,
         .align <$> chooseAny Bool,
@@ -156,7 +156,9 @@ where
         .append <$> go n <*> go n,
         @Format.group <$> go n <*> arbitrary,
         .tag <$> arbitrary <*> go n
-      ] (by grind)
+      ]
+      have : 0 < gens.size := by grind
+      oneOf gens this
 
 instance : Shrinkable Format where
   shrink := go
@@ -224,14 +226,16 @@ where
         .mvar <$> arbitrary
       ]
     | n + 1 => do
-      oneOf #[
+      let gens := #[
         pure .zero,
         .succ <$> go n,
         .max <$> go n <*> go n,
         .imax <$> go n <*> go n,
         .param <$> arbitrary,
         .mvar <$> arbitrary
-      ] (by grind)
+      ]
+      have : 0 < gens.size := by grind
+      oneOf gens this
 
 instance : Shrinkable Level where
   shrink := go
