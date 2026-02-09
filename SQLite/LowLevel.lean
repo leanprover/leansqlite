@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Author: David Thrane Christiansen
 -/
 module
+import all SQLite.FFI
 public import SQLite.FFI
 
 set_option doc.verso true
@@ -137,8 +138,16 @@ A prepared statement. Prepared statements are the primary interface to interacti
 -/
 public structure Stmt where
   db : SQLite
-  stmt : FFI.Stmt
-deriving Repr
+  private stmt : FFI.Stmt
+
+instance : Repr Stmt where
+  reprPrec := private fun
+    | { db, stmt }, _ =>
+      .group <|
+        .indentD ("{" ++ .line ++
+          .group ("db :=" ++ .line ++ repr db ++ ",") ++ .line ++
+          .group ("stmt :=" ++ .line ++ repr stmt)) ++
+        .line ++ "}"
 
 /--
 Prepares a statement.
@@ -444,7 +453,7 @@ public def clearBindings (stmt : Stmt) : IO Unit :=
 Returns the type of a column in the result set.
 
 The type is only meaningful if no automatic type conversions have occurred for the value in
-question. After a type conversion, the result of calling sqlite3_column_type() is undefined, though
+question. After a type conversion, the result of calling `sqlite3_column_type()` is undefined, though
 harmless.
 -/
 public def columnType (stmt : Stmt) (column : Int32) : IO Value.DataType := do
@@ -470,7 +479,7 @@ Executes SQL that doesn't return data.
 This function supports executing multiple semicolon-separated SQL statements in a single call.
 If any statement fails, execution stops and an error is returned. To ensure all statements
 execute atomically (all succeed or all roll back), wrap the call in a transaction.
-For single statements with parameters, use {name}`prepare` or the {lit}`sql!` macro instead.
+For single statements with parameters, use {lean}`prepare` or the {lit}`sql!` macro instead.
 -/
 public def exec (db : SQLite) (sql : String) : IO Unit :=
   FFI.exec db.connection sql
@@ -636,7 +645,8 @@ public def transaction (db : SQLite) (action : IO α) (mode : TransactionMode :=
     commit db
     return result
   catch e =>
-    rollback db
+    try rollback db
+    catch e' => throw (.userError s!"Rollback failed: {e'}\nOriginal error: {e}")
     throw e
 
 /--

@@ -48,9 +48,6 @@ public instance : ResultColumn Int64 where
 public instance : ResultColumn Bool where
   get stmt i := do return (← Stmt.columnInt stmt i) ≠ 0
 
-public instance : ResultColumn Nat where
-  get stmt i := (·.toNatClampNeg) <$> Stmt.columnInt64 stmt i
-
 open Blob in
 /--
 Defines an instance that interprets a column as a binary blob, according to its {name}`FromBinary`
@@ -61,6 +58,9 @@ public def ResultColumn.asBlob [FromBinary α] : ResultColumn α where
     match (← fromBinary <$> Stmt.columnBlob stmt i) with
     | .ok v => pure v
     | .error e => throw <| IO.userError s!"Failed to deserialize blob in column {i}: {e}"
+
+open Blob in
+public instance : ResultColumn Nat := ResultColumn.asBlob
 
 /--
 Provides a canonical way to read a potentially-null value of type {name}`α` from a SQL query.

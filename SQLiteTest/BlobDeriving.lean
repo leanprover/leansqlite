@@ -143,7 +143,7 @@ instance [Shrinkable α] : Shrinkable (Box α) where
 def runBlobDerivingTests : IO (Nat × Nat) := do
   let mut success := 0
   let mut failure := 0
-  for t in ([Pair, Color, Shape, Msg, Cmd, Box Nat, Box String] : List Testable) do
+  for t in ([Pair, Color, Shape, Msg, Cmd, Box Nat, Box String] : List CanTest) do
     if (← Testable.test t) then
       success := success + 1
     else

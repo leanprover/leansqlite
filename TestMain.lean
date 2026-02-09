@@ -443,8 +443,8 @@ def testResultIter (db : SQLite) : TestM Unit :=
       insertStmt.exec
 
     let q ← db sql!"SELECT name, length_km FROM rivers ORDER BY length_km"
-    let all : Array (String × Nat) ← q.results.toArray
-    let expected := #[("Mississippi", 3766), ("Amazon", 6400), ("Nile", 6650)]
+    let all : Array (String × Float) ← q.results.toArray
+    let expected := #[("Mississippi", 3766.0), ("Amazon", 6400.0), ("Nile", 6650.0)]
     if all == expected then
       recordSuccess "Records matched"
     else
@@ -456,6 +456,51 @@ def testResultIter (db : SQLite) : TestM Unit :=
       out := out ++ l ++ "\n"
     let expected := "6400.0\n6650.0\n3766.0\n"
     expect (out == expected) s!"Expected {expected.quote} but got {out.quote}"
+
+def testLargeNat (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Large Nat Round-Trip ===" do
+    db.exec "CREATE TABLE IF NOT EXISTS nat_test (id INTEGER PRIMARY KEY, value TEXT);"
+    db.exec "DELETE FROM nat_test;"
+
+    -- A Nat larger than 2^64
+    let bigNat : Nat := 2 ^ 256 + 42
+
+    expectSuccess "Inserted large Nat" do
+      let s ← db sql!"INSERT INTO nat_test (id, value) VALUES (1, {bigNat})"
+      s.exec
+
+    let q ← db sql!"SELECT value FROM nat_test WHERE id = 1"
+    if ← q.step then
+      let result : Nat ← ResultColumn.get q 0
+      expect (result == bigNat) s!"Expected {bigNat}, got {result}"
+    else
+      recordFailure "No row returned"
+
+def testBoolRoundTrip (db : SQLite) : TestM Unit :=
+  withHeader "=== Testing Bool Round-Trip ===" do
+    db.exec "CREATE TABLE IF NOT EXISTS bool_test (id INTEGER PRIMARY KEY, flag INTEGER);"
+    db.exec "DELETE FROM bool_test;"
+
+    -- Insert true and false via QueryParam Bool
+    let t : Bool := true
+    let f : Bool := false
+    (← db sql!"INSERT INTO bool_test (id, flag) VALUES (1, {t})").exec
+    (← db sql!"INSERT INTO bool_test (id, flag) VALUES (2, {f})").exec
+    recordSuccess "Inserted Bool values"
+
+    -- Read back via ResultColumn Bool
+    let q ← db sql!"SELECT flag FROM bool_test ORDER BY id"
+    if ← q.step then
+      let v1 : Bool ← ResultColumn.get q 0
+      expect (v1 == true) s!"Expected true, got {v1}"
+      if ← q.step then
+        let v2 : Bool ← ResultColumn.get q 0
+        expect (v2 == false) s!"Expected false, got {v2}"
+        recordSuccess "Bool round-trip correct (true → true, false → false)"
+      else
+        recordFailure "Missing second row"
+    else
+      recordFailure "Missing first row"
 
 def testTransactions (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Transactions ===" do
@@ -972,13 +1017,13 @@ def testDbFilename (dbPath : System.FilePath) : TestM Unit :=
 
 def testTotalChanges (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Total Changes ===" do
-    -- Get initial total changes
-    let initialTotal ← db.totalChanges
-    verbose do report s!"  Initial total changes: {initialTotal}"
-
-    -- Make some changes
+    -- Set up test table and clear any existing data before measuring changes
     db.exec "CREATE TABLE IF NOT EXISTS total_test (id INTEGER, value TEXT);"
     db.exec "DELETE FROM total_test;"
+
+    -- Get initial total changes after setup, so prior state doesn't affect deltas
+    let initialTotal ← db.totalChanges
+    verbose do report s!"  Initial total changes: {initialTotal}"
 
     db.exec "INSERT INTO total_test (id, value) VALUES (1, 'a');"
     db.exec "INSERT INTO total_test (id, value) VALUES (2, 'b');"
@@ -1219,6 +1264,42 @@ def testOpenWith (dbPath : System.FilePath) : TestM Unit :=
     catch _e =>
       recordSuccess "Read-write without create correctly failed for non-existent database"
 
+def testInMemoryOpenWith (useUri : Bool) : TestM Unit :=
+  let label := if useUri then "URI" else "flag"
+  let openMemory : IO SQLite :=
+    if useUri then
+      SQLite.openWith "file::memory:" { mode := .readWriteCreate, uri := true }
+    else
+      SQLite.openWith "not-a-real-file" { mode := .readWriteCreate, memory := true }
+  withHeader s!"=== Testing In-Memory Database ({label}) ===" do
+    let db ← openMemory
+
+    -- Write some data
+    db.exec "CREATE TABLE mem_test (id INTEGER PRIMARY KEY, value TEXT);"
+    db.exec "INSERT INTO mem_test VALUES (1, 'hello');"
+    db.exec "INSERT INTO mem_test VALUES (2, 'world');"
+    recordSuccess s!"Created table and inserted data ({label})"
+
+    -- Read it back
+    let stmt ← db.prepare "SELECT value FROM mem_test ORDER BY id;"
+    let mut values : Array String := #[]
+    while (← stmt.step) do
+      values := values.push (← stmt.columnText 0)
+    expect (values == #["hello", "world"])
+      s!"Expected #[hello, world], got {repr values}"
+    recordSuccess s!"Read back data correctly ({label})"
+
+    -- Verify dbFilename returns none (in-memory)
+    let filename ← db.dbFilename
+    expect filename.isNone
+      s!"Expected no filename for in-memory database, got {repr filename}"
+    recordSuccess s!"In-memory database has no filename ({label})"
+
+    -- A second connection should not see the first's tables
+    let db2 ← openMemory
+    expectFailure s!"Second in-memory database is independent ({label})"
+      (db2.prepare "SELECT value FROM mem_test;")
+
 def testColumnMetadata (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Column Metadata ===" do
     -- Create a test table
@@ -1439,6 +1520,8 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testInterpolation db
     testNullableParams db
     testResultIter db
+    testLargeNat db
+    testBoolRoundTrip db
     testTransactions db
     testLastInsertRowId db
     testChanges db
@@ -1455,6 +1538,8 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testDataCount db
     testDbReadonly dbPath
     testOpenWith dbPath
+    testInMemoryOpenWith (useUri := false)
+    testInMemoryOpenWith (useUri := true)
     testColumnMetadata db
     testColumnName db
     runSha3Tests db
