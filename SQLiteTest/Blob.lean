@@ -157,7 +157,7 @@ where
         @Format.group <$> go n <*> arbitrary,
         .tag <$> arbitrary <*> go n
       ]
-      have : 0 < gens.size := by grind
+      have : 0 < gens.size := by unfold gens; simp
       oneOf gens this
 
 instance : Shrinkable Format where
@@ -234,7 +234,7 @@ where
         .param <$> arbitrary,
         .mvar <$> arbitrary
       ]
-      have : 0 < gens.size := by grind
+      have : 0 < gens.size := by unfold gens; simp
       oneOf gens this
 
 instance : Shrinkable Level where
