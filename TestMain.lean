@@ -1238,6 +1238,42 @@ def testOpenWith (dbPath : System.FilePath) : TestM Unit :=
     catch _e =>
       recordSuccess "Read-write without create correctly failed for non-existent database"
 
+def testInMemoryOpenWith (useUri : Bool) : TestM Unit :=
+  let label := if useUri then "URI" else "flag"
+  let openMemory : IO SQLite :=
+    if useUri then
+      SQLite.openWith "file::memory:" { mode := .readWriteCreate, uri := true }
+    else
+      SQLite.openWith "not-a-real-file" { mode := .readWriteCreate, memory := true }
+  withHeader s!"=== Testing In-Memory Database ({label}) ===" do
+    let db ← openMemory
+
+    -- Write some data
+    db.exec "CREATE TABLE mem_test (id INTEGER PRIMARY KEY, value TEXT);"
+    db.exec "INSERT INTO mem_test VALUES (1, 'hello');"
+    db.exec "INSERT INTO mem_test VALUES (2, 'world');"
+    recordSuccess s!"Created table and inserted data ({label})"
+
+    -- Read it back
+    let stmt ← db.prepare "SELECT value FROM mem_test ORDER BY id;"
+    let mut values : Array String := #[]
+    while (← stmt.step) do
+      values := values.push (← stmt.columnText 0)
+    expect (values == #["hello", "world"])
+      s!"Expected #[hello, world], got {repr values}"
+    recordSuccess s!"Read back data correctly ({label})"
+
+    -- Verify dbFilename returns none (in-memory)
+    let filename ← db.dbFilename
+    expect filename.isNone
+      s!"Expected no filename for in-memory database, got {repr filename}"
+    recordSuccess s!"In-memory database has no filename ({label})"
+
+    -- A second connection should not see the first's tables
+    let db2 ← openMemory
+    expectFailure s!"Second in-memory database is independent ({label})"
+      (db2.prepare "SELECT value FROM mem_test;")
+
 def testColumnMetadata (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Column Metadata ===" do
     -- Create a test table
@@ -1475,6 +1511,8 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testDataCount db
     testDbReadonly dbPath
     testOpenWith dbPath
+    testInMemoryOpenWith (useUri := false)
+    testInMemoryOpenWith (useUri := true)
     testColumnMetadata db
     testColumnName db
     runSha3Tests db
