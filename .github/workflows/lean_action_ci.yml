@@ -19,7 +19,7 @@ jobs:
           - toolchain-file
           - leanprover/lean4:4.27.0
           - leanprover/lean4:4.28.0-rc1
-          - leanprover/lean4-nightly:nightly-2026-01-28
+          - leanprover/lean4-nightly:nightly-2026-02-09
 
     name: build (${{ matrix.os }}, lean ${{ matrix.lean-version }})
 
