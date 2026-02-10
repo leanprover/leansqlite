@@ -56,7 +56,9 @@ lean_lib SQLite where
   precompileModules := true
 
 @[default_target]
-lean_lib SQLiteTest
+lean_lib SQLiteTest where
+  needs := #[leansqlite]
+  precompileModules := true
 
 @[default_target, test_driver]
 lean_exe TestMain

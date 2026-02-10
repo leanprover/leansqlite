@@ -1600,3 +1600,21 @@ def testNestedOptionError (db : SQLite) : IO Unit := do
   let nestedOption : Option (Option String) := some none
   let _stmt ← db sql!"SELECT * FROM table WHERE col = {nestedOption}"
   pure ()
+
+-- Tests that inhabited subsingleton types have zero-cost serialization as blobs
+
+/-- info: 0 -/
+#guard_msgs in
+#eval Blob.toBinary () |>.size
+
+/-- info: Except.ok () -/
+#guard_msgs in
+#eval Blob.fromBinaryOf Unit .empty
+
+/-- info: Except.ok 4 -/
+#guard_msgs in
+#eval Blob.toBinary #[(), (), (), ()] |> Blob.fromBinaryOf Nat -- just the length of the array
+
+/-- info: [1] -/
+#guard_msgs in
+#eval Blob.toBinary (some ()) -- should just be the constructor tag `1`

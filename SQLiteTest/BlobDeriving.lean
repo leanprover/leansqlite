@@ -68,11 +68,7 @@ deriving BEq, Repr, ToBinary, FromBinary
 
 /-! ### FromBinary on zero-ctor type -/
 inductive Void
-deriving ToBinary
-
-/-- error: None of the deriving handlers for class `FromBinary` applied to `Void` -/
-#guard_msgs in
-deriving instance FromBinary for Void
+deriving ToBinary, FromBinary
 
 /-! ### ToBinary on type with proof fields -/
 /-- error: None of the deriving handlers for class `ToBinary` applied to `ProofField` -/
@@ -148,6 +144,35 @@ def runBlobDerivingTests : IO (Nat × Nat) := do
       success := success + 1
     else
       failure := failure + 1
+
+  -- Test that deserializing an uninhabited type throws the expected error
+  match fromBinaryOf Void .empty with
+  | .error msg =>
+    if msg == "Cannot deserialize uninhabited type `SQLite.Test.BlobDeriving.Void`" then
+      success := success + 1
+    else
+      IO.eprintln s!"Void deserialization error mismatch: {msg}"
+      failure := failure + 1
+  | .ok _ =>
+    IO.eprintln "Void deserialization should have failed"
+    failure := failure + 1
+
+  -- Test round-trip for Option Empty (none case)
+  let noneEmpty : Option Empty := none
+  if toFromBinary .empty .empty noneEmpty then
+    success := success + 1
+  else
+    IO.eprintln "Option Empty round-trip failed for none"
+    failure := failure + 1
+
+  -- Test round-trip for Array Empty (empty array case)
+  let emptyArr : Array Empty := #[]
+  if toFromBinary .empty .empty emptyArr then
+    success := success + 1
+  else
+    IO.eprintln "Array Empty round-trip failed for #[]"
+    failure := failure + 1
+
   pure (success, failure)
 
 end SQLite.Test.BlobDeriving
