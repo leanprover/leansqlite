@@ -37,6 +37,13 @@ def testProp
     IO (TestResult p') :=
   Testable.checkIO p' (cfg := cfg)
 
+private def ofArrayFueled (gen : Gen α) : Gen (Array α) := do
+  let len ← chooseNat
+  let mut arr := .mkEmpty len
+  for _ in 0...len do
+    arr := arr.push (← gen.resize (· / len))
+  return arr
+
 instance : Arbitrary Unit where
   arbitrary := pure ()
 
@@ -135,8 +142,8 @@ instance : Shrinkable Name where
     | .str pre s => [.anonymous, pre] ++ (Shrinkable.shrink s).map (.str pre ·)
     | .num pre n => [.anonymous, pre] ++ (Shrinkable.shrink n).map (.num pre ·)
 
-instance : Arbitrary Format where
-  arbitrary := do go (← chooseNat)
+instance : ArbitraryFueled Format where
+  arbitraryFueled := go
 where
   go : Nat → Gen Format
     | 0 => do
@@ -215,8 +222,8 @@ instance : Arbitrary LevelMVarId where
 instance : Shrinkable LevelMVarId where
   shrink x := (Shrinkable.shrink x.name).map ({ name := · })
 
-instance : Arbitrary Level where
-  arbitrary := do go (← chooseNat)
+instance : ArbitraryFueled Level where
+  arbitraryFueled := go
 where
   go : Nat → Gen Level
     | 0 => do
@@ -280,11 +287,185 @@ instance : Shrinkable Literal where
     | .natVal n => (Shrinkable.shrink n).map .natVal
     | .strVal s => (Shrinkable.shrink s).map .strVal
 
+instance : BEq Empty where
+  beq a _ := nomatch a
+
+instance : Repr Empty where
+  reprPrec a _ := nomatch a
+
+instance : Shrinkable Empty where
+  shrink a := nomatch a
+
+instance : Arbitrary Doc.MathMode where
+  arbitrary := oneOf #[pure .inline, pure .display]
+
+instance : Shrinkable Doc.MathMode where
+  shrink
+    | .inline => []
+    | .display => [.inline]
+
+partial instance [Arbitrary i] : ArbitraryFueled (Doc.Inline i) where
+  arbitraryFueled := go
+where
+  go : Nat → Gen (Doc.Inline i)
+    | 0 =>
+      let gens := #[
+        .text <$> arbitrary,
+        .code <$> arbitrary,
+        .math <$> arbitrary <*> arbitrary,
+        .linebreak <$> arbitrary
+      ]
+      have : 0 < gens.size := by unfold gens; simp
+      oneOf gens this
+    | n + 1 => do
+      let sub : Gen (Array (Doc.Inline i)) := ofArrayFueled (go n)
+      let gens := #[
+        .text <$> arbitrary,
+        .code <$> arbitrary,
+        .math <$> arbitrary <*> arbitrary,
+        .linebreak <$> arbitrary,
+        .emph <$> sub,
+        .bold <$> sub,
+        .link <$> sub <*> arbitrary,
+        .footnote <$> arbitrary <*> sub,
+        .image <$> arbitrary <*> arbitrary,
+        .concat <$> sub,
+        .other <$> arbitrary <*> sub
+      ]
+      have : 0 < gens.size := by unfold gens; simp
+      oneOf gens this
+
+partial instance [Shrinkable i] : Shrinkable (Doc.Inline i) where
+  shrink := go
+where
+  go
+    | .text s => .empty :: (Shrinkable.shrink s |>.map .text)
+    | .code s => .empty :: .text s :: (Shrinkable.shrink s |>.map .code)
+    | .math m s => .empty :: .text s :: .code s :: (Shrinkable.shrink s |>.map (.math m))
+    | .linebreak _ => [.empty]
+    | .emph xs =>
+      have : Shrinkable (Doc.Inline i) := ⟨go⟩
+      .empty :: (Shrinkable.shrink xs |>.map .emph)
+    | .bold xs =>
+      have : Shrinkable (Doc.Inline i) := ⟨go⟩
+      .empty :: .emph xs :: (Shrinkable.shrink xs |>.map .bold)
+    | .link xs url =>
+      have : Shrinkable (Doc.Inline i) := ⟨go⟩
+      .empty :: (Shrinkable.shrink xs |>.map (.link · url)) ++ (Shrinkable.shrink url |>.map (.link xs))
+    | .footnote ref xs =>
+      have : Shrinkable (Doc.Inline i) := ⟨go⟩
+      .empty :: (Shrinkable.shrink xs |>.map (.footnote ref)) ++ (Shrinkable.shrink ref |>.map (.footnote · xs))
+    | .image alt url =>
+      .empty :: (Shrinkable.shrink alt |>.map (.image · url)) ++ (Shrinkable.shrink url |>.map (.image alt))
+    | .concat xs =>
+      have : Shrinkable (Doc.Inline i) := ⟨go⟩
+      Shrinkable.shrink xs |>.map .concat
+    | .other container contents =>
+      have : Shrinkable (Doc.Inline i) := ⟨go⟩
+      .empty ::
+        (Shrinkable.shrink container |>.map (.other · contents)) ++
+        (Shrinkable.shrink contents |>.map (.other container))
+
+instance [Arbitrary α] : Arbitrary (Doc.ListItem α) where
+  arbitrary := return { contents := ← arbitrary }
+
+instance [Shrinkable α] : Shrinkable (Doc.ListItem α) where
+  shrink
+    | ⟨xs⟩ => Shrinkable.shrink xs |>.map (⟨·⟩)
+
+instance [Arbitrary α] [Arbitrary β] : Arbitrary (Doc.DescItem α β) where
+  arbitrary := return { term := ← arbitrary, desc := ← arbitrary }
+
+instance [Shrinkable α] [Shrinkable β] : Shrinkable (Doc.DescItem α β) where
+  shrink
+    | ⟨xs, ys⟩ => ⟨#[], #[]⟩ :: (Shrinkable.shrink xs |>.map (⟨·, ys⟩)) ++ (Shrinkable.shrink ys |>.map (⟨xs, ·⟩))
+
+partial instance [Arbitrary i] [Arbitrary b] : ArbitraryFueled (Doc.Block i b) where
+  arbitraryFueled := go
+where
+  go : Nat → Gen (Doc.Block i b)
+    | 0 => do
+      let gens := #[
+        .para <$> arbitrary,
+        .code <$> arbitrary
+      ]
+      oneOf gens (by unfold gens; simp)
+    | n + 1 => do
+      let subBlocks := ofArrayFueled (go n)
+      let subListItems := ofArrayFueled do return { contents := ← subBlocks }
+      let subDescItems := ofArrayFueled  do return ⟨(← arbitrary), (← subBlocks)⟩
+      let gens := #[
+        .para <$> arbitrary,
+        .code <$> arbitrary,
+        .ul <$> subListItems,
+        .ol <$> arbitrary <*> subListItems,
+        .dl <$> subDescItems,
+        .blockquote <$> subBlocks,
+        .concat <$> subBlocks,
+        .other <$> arbitrary <*> subBlocks
+      ]
+      have : 0 < gens.size := by unfold gens; simp
+      oneOf gens this
+
+partial instance [Shrinkable i] [Shrinkable b] : Shrinkable (Doc.Block i b) where
+  shrink := go
+where
+  go
+    | .para xs =>
+      .empty :: (Shrinkable.shrink xs |>.map (.para))
+    | .concat xs =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      Shrinkable.shrink xs |>.map .concat
+    | .blockquote xs =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      [.empty, .concat xs] ++ (Shrinkable.shrink xs |>.map .blockquote)
+    | .ul xs =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      [.empty] ++ (Shrinkable.shrink xs |>.map .ul)
+    | .ol n xs =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      [.empty] ++ (Shrinkable.shrink xs |>.map (.ol n)) ++ (Shrinkable.shrink n |>.map (.ol · xs))
+    | .dl xs =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      [.empty] ++ (Shrinkable.shrink xs |>.map .dl)
+    | .code s =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      [.empty] ++ (Shrinkable.shrink s |>.map .code)
+    | .other container content =>
+      have : Shrinkable (Doc.Block i b) := ⟨go⟩
+      [.empty] ++
+      (Shrinkable.shrink container |>.map (.other · content)) ++
+      (Shrinkable.shrink content |>.map (.other container))
+
+
+partial instance [Arbitrary i] [Arbitrary b] [Arbitrary p] : ArbitraryFueled (Doc.Part i b p) where
+  arbitraryFueled := go
+where
+  go : Nat → Gen (Doc.Part i b p)
+    | 0 => do return {
+        title := ← arbitrary,
+        titleString := ← arbitrary,
+        metadata := ← arbitrary,
+        content := ← arbitrary,
+        subParts := #[]
+      }
+    | n + 1 => do
+      return {
+        title := ← arbitrary,
+        titleString := ← arbitrary,
+        metadata := ← arbitrary,
+        content := ← arbitrary,
+        subParts := ← ofArrayFueled (go n)
+      }
+
+instance : Shrinkable (Doc.Part i b p) where
+
 def typesToTest : List CanTest := [
   Unit, Nat, UInt8, UInt64, ByteArray, Int, Array Nat, Bool, Bool ⊕ Nat,
   List Char, String, (String × Bool × Nat),
   Std.Format.FlattenBehavior, Format, Name,
-  FVarId, MVarId, LevelMVarId, Level, BinderInfo, Literal
+  FVarId, MVarId, LevelMVarId, Level, BinderInfo, Literal,
+  Doc.MathMode, Doc.Inline Bool, Doc.Block Bool Bool, Doc.Part Bool Bool Bool
 ]
 
 def runBlobTests : IO (Nat × Nat) := do

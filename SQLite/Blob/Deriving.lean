@@ -207,6 +207,15 @@ private def mkCtorLambda (ctorName : Name) (numFields : Nat) : TermElabM Term :=
 /-! # FromBinary Generation -/
 
 /--
+Generates the {name}`FromBinary` body for a zero-constructor (uninhabited) type. The generated
+deserializer immediately throws an error.
+-/
+private def mkFromBinaryZeroCtorBody (indVal : InductiveVal) : TermElabM Term := do
+  let errorMsg := s!"Cannot deserialize uninhabited type `{indVal.name}`"
+  let errorMsgLit := Syntax.mkStrLit errorMsg
+  `(throw $errorMsgLit)
+
+/--
 Generates the {name}`FromBinary` body for a single-constructor type.
 -/
 private def mkFromBinarySingleCtorBody (indVal : InductiveVal) : TermElabM Term := do
@@ -265,7 +274,7 @@ private def mkFromBinaryAuxFunction (ctx : Deriving.Context) (i : Nat) : TermEla
   let targetType := header.targetType
 
   let body ← match indVal.ctors.length with
-    | 0 => unreachable!  -- Rejected by handler
+    | 0 => mkFromBinaryZeroCtorBody indVal
     | 1 => mkFromBinarySingleCtorBody indVal
     | _ => mkFromBinaryMultiCtorBody indVal
 
@@ -303,7 +312,6 @@ def mkFromBinaryInstanceHandler (declNames : Array Name) : CommandElabM Bool := 
   let env ← getEnv
   if ← declNames.allM fun name => do
     let some indVal := getInductiveVal? env name | return false
-    if indVal.ctors.length == 0 then return false
     liftTermElabM do
       for ctorName in indVal.ctors do
         if !(← hasNoProofFields ctorName) then return false
