@@ -22,9 +22,16 @@ namespace SQLite
 
 /--
 Opens a file as a SQLite connection.
+
+If {name}`busyTimeoutMs` is positive, {name (full := FFI.busyTimeout)}`busyTimeout` is called on the
+connection before it is returned. As a result, operations that encounter a locked table will retry
+for up to that many milliseconds instead of failing immediately. If {lean}`busyTimeoutMs ≤ 0` then
+it is ignored.
 -/
-public def «open» (filename : System.FilePath) : IO SQLite := do
+public def «open» (filename : System.FilePath) (busyTimeoutMs : Int32 := 0) : IO SQLite := do
   let connection ← FFI.«open» filename.toString
+  if busyTimeoutMs > 0 then
+    FFI.busyTimeout connection busyTimeoutMs
   return { filename, connection }
 
 /--
@@ -112,10 +119,17 @@ database is opened.
 
 The {name}`vfs` parameter specifies the name of the VFS module to use. Pass {lean}`none` (the default)
 to use the default VFS.
+
+If {name}`busyTimeoutMs` is positive, {name (full := FFI.busyTimeout)}`busyTimeout` is called on the
+connection before it is returned. As a result, operations that encounter a locked table will retry
+for up to that many milliseconds instead of failing immediately. If {lean}`busyTimeoutMs ≤ 0` then
+it is ignored.
 -/
-public def openWith (filename : System.FilePath) (flags : OpenFlags) (vfs : Option String := none) : IO SQLite := do
+public def openWith (filename : System.FilePath) (flags : OpenFlags) (vfs : Option String := none) (busyTimeoutMs : Int32 := 0) : IO SQLite := do
   let flagBits := flags.toInt
   let connection ← FFI.openV2 filename.toString flagBits vfs
+  if busyTimeoutMs > 0 then
+    FFI.busyTimeout connection busyTimeoutMs
   return { filename, connection }
 
 /--

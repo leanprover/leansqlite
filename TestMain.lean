@@ -1300,6 +1300,76 @@ def testInMemoryOpenWith (useUri : Bool) : TestM Unit :=
     expectFailure s!"Second in-memory database is independent ({label})"
       (db2.prepare "SELECT value FROM mem_test;")
 
+def testOpenBusyTimeout : TestM Unit :=
+  withHeader "=== Testing Open with Busy Timeout ===" do
+    -- Test 1: Without timeout, a locked database fails immediately
+    IO.FS.withTempFile fun _handle tempFile => do
+      let db1 ← SQLite.open tempFile
+      db1.exec "CREATE TABLE timeout_open_test (id INTEGER PRIMARY KEY, value TEXT);"
+
+      -- Lock the database with an exclusive transaction
+      db1.beginTransaction .exclusive
+      db1.exec "INSERT INTO timeout_open_test VALUES (1, 'locked');"
+
+      -- Open a second connection with no timeout (default)
+      let db2 ← SQLite.open tempFile
+      try
+        db2.exec "INSERT INTO timeout_open_test VALUES (2, 'blocked');"
+        recordFailure "Should have failed immediately due to database lock (no timeout)"
+      catch _ =>
+        recordSuccess "Without busyTimeoutMs, locked database fails immediately"
+
+      db1.commit
+
+    -- Test 2: With timeout, a locked database waits and succeeds after lock is released
+    IO.FS.withTempFile fun _handle tempFile => do
+      let db1 ← SQLite.open tempFile
+      db1.exec "CREATE TABLE timeout_open_test2 (id INTEGER PRIMARY KEY, value TEXT);"
+
+      -- Lock the database
+      db1.beginTransaction .exclusive
+      db1.exec "INSERT INTO timeout_open_test2 VALUES (1, 'locked');"
+
+      -- Open a second connection with a generous timeout
+      let db2 ← SQLite.open tempFile (busyTimeoutMs := 10000)
+
+      -- Release the lock from a background task after 1s
+      let releaseTask ← IO.asTask do
+        IO.sleep 1000
+        db1.commit
+
+      -- db2 should wait and succeed once the lock is released
+      try
+        db2.exec "INSERT INTO timeout_open_test2 VALUES (2, 'waited');"
+        recordSuccess "With busyTimeoutMs, waited for lock release and succeeded"
+      catch e =>
+        recordFailure s!"Should have succeeded after lock release: {e}"
+
+      -- Wait for the release task to finish
+      let _ ← IO.ofExcept releaseTask.get
+
+    -- Test 3: Same behavior via openWith
+    IO.FS.withTempFile fun _handle tempFile => do
+      let db1 ← SQLite.openWith tempFile .readWriteCreate
+      db1.exec "CREATE TABLE timeout_open_test3 (id INTEGER PRIMARY KEY, value TEXT);"
+
+      db1.beginTransaction .exclusive
+      db1.exec "INSERT INTO timeout_open_test3 VALUES (1, 'locked');"
+
+      let db2 ← SQLite.openWith tempFile .readWriteCreate (busyTimeoutMs := 10000)
+
+      let releaseTask ← IO.asTask do
+        IO.sleep 1000
+        db1.commit
+
+      try
+        db2.exec "INSERT INTO timeout_open_test3 VALUES (2, 'waited');"
+        recordSuccess "openWith with busyTimeoutMs also waits for lock release"
+      catch e =>
+        recordFailure s!"openWith should have succeeded after lock release: {e}"
+
+      let _ ← IO.ofExcept releaseTask.get
+
 def testColumnMetadata (db : SQLite) : TestM Unit :=
   withHeader "=== Testing Column Metadata ===" do
     -- Create a test table
@@ -1538,6 +1608,7 @@ def runTests (dbPath : System.FilePath) (verbose : Bool) (report : String → IO
     testDataCount db
     testDbReadonly dbPath
     testOpenWith dbPath
+    testOpenBusyTimeout
     testInMemoryOpenWith (useUri := false)
     testInMemoryOpenWith (useUri := true)
     testColumnMetadata db
