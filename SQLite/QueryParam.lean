@@ -45,11 +45,13 @@ public instance : QueryParam Unit where
 public instance : QueryParam Bool where
   bind stmt index b := Stmt.bindInt32 stmt index (if b then 1 else 0)
 
--- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible)
+-- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible).
+-- We use modifyScope directly rather than `set_option` because the option may not be registered in
+-- all versions that have implicitReducible.
 open Lean Elab Command in
 #eval show CommandElabM Unit from do
   if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    elabCommand (← `(command|set_option warn.classDefReducibility false))
+    modifyScope fun scope => { scope with opts := scope.opts.setBool `warn.classDefReducibility false }
 
 open Blob in
 /--
