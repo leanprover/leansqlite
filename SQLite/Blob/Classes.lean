@@ -6,6 +6,7 @@ Author: David Thrane Christiansen
 module
 public import Lean.Data.Json.Basic
 public import Lean.Data.Json.FromToJson
+import Lean.Elab.Command
 
 set_option linter.missingDocs true
 set_option doc.verso true
@@ -414,3 +415,15 @@ public def FromBinary.viaJson [Lean.FromJson α] : FromBinary α where
   deserializer := do
     let json ← FromBinary.deserializer
     Lean.FromJson.fromJson? json
+
+-- Compatibility shim for v4.29.0+: mark class-typed defs as implicit_reducible
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
+    for cmd in #[
+      (← `(command|attribute [implicit_reducible] ToBinary.via)),
+      (← `(command|attribute [implicit_reducible] FromBinary.via)),
+      (← `(command|attribute [implicit_reducible] FromBinary.viaExcept)),
+      (← `(command|attribute [implicit_reducible] ToBinary.viaJson)),
+      (← `(command|attribute [implicit_reducible] FromBinary.viaJson))] do
+      elabCommand cmd

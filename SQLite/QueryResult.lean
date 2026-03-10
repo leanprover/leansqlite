@@ -165,4 +165,10 @@ Returns an iterator into all the results of a prepared statement, with the type 
 -/
 public def Stmt.resultsAs (α : Type) [Row α] (stmt : Stmt) : @IterM (QueryIterator α) IO α := stmt.results
 
+-- Compatibility shim for v4.29.0+
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
+    elabCommand (← `(command|attribute [implicit_reducible] ResultColumn.asBlob))
+
 end SQLite
