@@ -7,6 +7,7 @@ module
 
 public import SQLite.LowLevel
 public import SQLite.Blob
+import Lean.Elab.Command
 
 set_option doc.verso true
 set_option linter.missingDocs true
@@ -79,5 +80,11 @@ Binds a query parameter based on its Lean type's {name}`NullableQueryParam` inst
 -/
 def Stmt.bind [NullableQueryParam α] (stmt : Stmt) (index : Int32) (param : α) : IO Unit := do
   NullableQueryParam.bind stmt index param
+
+-- Compatibility shim for v4.29.0+
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
+    elabCommand (← `(command|attribute [implicit_reducible] QueryParam.asBlob))
 
 end SQLite
