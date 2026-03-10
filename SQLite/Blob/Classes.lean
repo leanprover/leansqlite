@@ -122,6 +122,12 @@ Uses the {lean}`FromBinary α` instance to deserialize a value of the indicated 
 public def fromBinaryOf (α : Type u) [FromBinary α] (data : ByteArray) : Except String α :=
   fromBinary data
 
+-- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible)
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
+    elabCommand (← `(command|set_option warn.classDefReducibility false))
+
 /--
 Constructs a {lean}`ToBinary α` instance from a {lean}`ToBinary β` instance that first transforms
 the value with {name}`f` and then serializes the result. {name}`f` should be injective. This should

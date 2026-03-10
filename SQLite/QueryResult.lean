@@ -48,6 +48,12 @@ public instance : ResultColumn Int64 where
 public instance : ResultColumn Bool where
   get stmt i := do return (← Stmt.columnInt stmt i) ≠ 0
 
+-- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible)
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
+    elabCommand (← `(command|set_option warn.classDefReducibility false))
+
 open Blob in
 /--
 Defines an instance that interprets a column as a binary blob, according to its {name}`FromBinary`

@@ -45,6 +45,12 @@ public instance : QueryParam Unit where
 public instance : QueryParam Bool where
   bind stmt index b := Stmt.bindInt32 stmt index (if b then 1 else 0)
 
+-- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible)
+open Lean Elab Command in
+#eval show CommandElabM Unit from do
+  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
+    elabCommand (← `(command|set_option warn.classDefReducibility false))
+
 open Blob in
 /--
 Defines an instance that binds a parameter as a binary blob, according to its {name}`ToBinary`
