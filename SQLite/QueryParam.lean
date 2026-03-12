@@ -45,20 +45,12 @@ public instance : QueryParam Unit where
 public instance : QueryParam Bool where
   bind stmt index b := Stmt.bindInt32 stmt index (if b then 1 else 0)
 
--- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible).
--- We use modifyScope directly rather than `set_option` because the option may not be registered in
--- all versions that have implicitReducible.
-open Lean Elab Command in
-#eval show CommandElabM Unit from do
-  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    modifyScope fun scope => { scope with opts := scope.opts.setBool `warn.classDefReducibility false }
-
 open Blob in
 /--
 Defines an instance that binds a parameter as a binary blob, according to its {name}`ToBinary`
 instance.
 -/
-public def QueryParam.asBlob [ToBinary α] : QueryParam α where
+@[implicit_reducible] public def QueryParam.asBlob [ToBinary α] : QueryParam α where
   bind stmt i x := Stmt.bindBlob stmt i (toBinary x)
 
 open Blob in
@@ -88,11 +80,5 @@ Binds a query parameter based on its Lean type's {name}`NullableQueryParam` inst
 -/
 def Stmt.bind [NullableQueryParam α] (stmt : Stmt) (index : Int32) (param : α) : IO Unit := do
   NullableQueryParam.bind stmt index param
-
--- Compatibility shim for v4.29.0+
-open Lean Elab Command in
-#eval show CommandElabM Unit from do
-  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    elabCommand (← `(command|attribute [implicit_reducible] QueryParam.asBlob))
 
 end SQLite

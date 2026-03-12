@@ -122,21 +122,13 @@ Uses the {lean}`FromBinary α` instance to deserialize a value of the indicated 
 public def fromBinaryOf (α : Type u) [FromBinary α] (data : ByteArray) : Except String α :=
   fromBinary data
 
--- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible).
--- We use modifyScope directly rather than `set_option` because the option may not be registered in
--- all versions that have implicitReducible.
-open Lean Elab Command in
-#eval show CommandElabM Unit from do
-  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    modifyScope fun scope => { scope with opts := scope.opts.setBool `warn.classDefReducibility false }
-
 /--
 Constructs a {lean}`ToBinary α` instance from a {lean}`ToBinary β` instance that first transforms
 the value with {name}`f` and then serializes the result. {name}`f` should be injective. This should
 be paired with a {name}`FromBinary` instance built with `FromBinary.via` (if {name}`f` is
 surjective) or `FromBinary.viaExcept` (if {name}`f` is not surjective).
 -/
-public def ToBinary.via [ToBinary β] (f : α → β) : ToBinary α where
+@[implicit_reducible] public def ToBinary.via [ToBinary β] (f : α → β) : ToBinary α where
   serializer x := ToBinary.serializer (f x)
 
 /--
@@ -144,7 +136,7 @@ Constructs a {lean}`FromBinary β` instance from a {lean}`FromBinary α` instanc
 value of type {name}`α` and then transforms it with {name}`f`. This should be paired with a
 {name}`ToBinary` instance built with {name}`ToBinary.via`.
 -/
-public def FromBinary.via [FromBinary α] (f : α → β) : FromBinary β where
+@[implicit_reducible] public def FromBinary.via [FromBinary α] (f : α → β) : FromBinary β where
   deserializer := f <$> FromBinary.deserializer (α := α)
 
 /--
@@ -152,7 +144,7 @@ Constructs a {lean}`FromBinary β` instance from a {lean}`FromBinary α` instanc
 value of type {name}`α` and then transforms it with {name}`f`, which may perform further validation.
 This should be paired with a {name}`ToBinary` instance built with {name}`ToBinary.via`.
 -/
-public def FromBinary.viaExcept [FromBinary α] (f : α → Except String β) : FromBinary β where
+@[implicit_reducible] public def FromBinary.viaExcept [FromBinary α] (f : α → Except String β) : FromBinary β where
   deserializer := do
     let val : α ← FromBinary.deserializer
     f val
@@ -413,25 +405,13 @@ Creates a {name}`ToBinary` instance that first converts a value to JSON and then
 result. This serialization is not as a JSON string, which can avoid the overhead of string escaping
 in certain specialized circumstances.
 -/
-public def ToBinary.viaJson [Lean.ToJson α] : ToBinary α := via Lean.ToJson.toJson
+@[implicit_reducible] public def ToBinary.viaJson [Lean.ToJson α] : ToBinary α := via Lean.ToJson.toJson
 
 /--
 Creates a {name}`FromBinary` instance that first deserializes a JSON value and then attempts to
 convert it to a value of type {name}`α`.
 -/
-public def FromBinary.viaJson [Lean.FromJson α] : FromBinary α where
+@[implicit_reducible] public def FromBinary.viaJson [Lean.FromJson α] : FromBinary α where
   deserializer := do
     let json ← FromBinary.deserializer
     Lean.FromJson.fromJson? json
-
--- Compatibility shim for v4.29.0+: mark class-typed defs as implicit_reducible
-open Lean Elab Command in
-#eval show CommandElabM Unit from do
-  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    for cmd in #[
-      (← `(command|attribute [implicit_reducible] ToBinary.via)),
-      (← `(command|attribute [implicit_reducible] FromBinary.via)),
-      (← `(command|attribute [implicit_reducible] FromBinary.viaExcept)),
-      (← `(command|attribute [implicit_reducible] ToBinary.viaJson)),
-      (← `(command|attribute [implicit_reducible] FromBinary.viaJson))] do
-      elabCommand cmd

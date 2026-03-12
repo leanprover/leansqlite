@@ -48,20 +48,12 @@ public instance : ResultColumn Int64 where
 public instance : ResultColumn Bool where
   get stmt i := do return (← Stmt.columnInt stmt i) ≠ 0
 
--- Suppress reducibility warnings on v4.29.0+ (the shim at end of file applies implicit_reducible).
--- We use modifyScope directly rather than `set_option` because the option may not be registered in
--- all versions that have implicitReducible.
-open Lean Elab Command in
-#eval show CommandElabM Unit from do
-  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    modifyScope fun scope => { scope with opts := scope.opts.setBool `warn.classDefReducibility false }
-
 open Blob in
 /--
 Defines an instance that interprets a column as a binary blob, according to its {name}`FromBinary`
 instance.
 -/
-public def ResultColumn.asBlob [FromBinary α] : ResultColumn α where
+@[implicit_reducible] public def ResultColumn.asBlob [FromBinary α] : ResultColumn α where
   get stmt i := do
     match (← fromBinary <$> Stmt.columnBlob stmt i) with
     | .ok v => pure v
@@ -172,11 +164,5 @@ public def Stmt.results [Row α] (stmt : Stmt) : @IterM (QueryIterator α) IO α
 Returns an iterator into all the results of a prepared statement, with the type specified explicitly.
 -/
 public def Stmt.resultsAs (α : Type) [Row α] (stmt : Stmt) : @IterM (QueryIterator α) IO α := stmt.results
-
--- Compatibility shim for v4.29.0+
-open Lean Elab Command in
-#eval show CommandElabM Unit from do
-  if (← getEnv).contains `Lean.ReducibilityStatus.implicitReducible then
-    elabCommand (← `(command|attribute [implicit_reducible] ResultColumn.asBlob))
 
 end SQLite
