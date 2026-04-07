@@ -8,7 +8,7 @@ module
 public import SQLite.LowLevel
 public import SQLite.Blob
 import Std.Data.Iterators
-import Lean.Elab.Command
+public meta import Lean.Elab.Command
 
 set_option doc.verso true
 set_option linter.missingDocs true
