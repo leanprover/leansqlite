@@ -28,6 +28,8 @@ jobs:
         run: echo "${{ matrix.lean-version }}" > lean-toolchain
 
       - uses: leanprover/lean-action@v1
+        with:
+          test: false
 
       - uses: leanprover/lean-action@v1
         with:
