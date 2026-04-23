@@ -7,8 +7,6 @@ import Lake
 
 open System Lake DSL
 
-require plausible from git "https://github.com/leanprover-community/plausible"@"main"
-
 package leansqlite where
   version := v!"0.1.0"
   keywords := #["sqlite", "database", "ffi"]
@@ -55,10 +53,10 @@ lean_lib SQLite where
   needs := #[leansqlite]
   precompileModules := true
 
-@[default_target]
-lean_lib SQLiteTest where
-  needs := #[leansqlite]
-  precompileModules := true
-
-@[default_target, test_driver]
-lean_exe TestMain
+@[test_driver]
+script tests do
+  IO.println "Test are found in the `tests/` subproject."
+  IO.println "This avoids downstream projects acquiring a transitive dependency on test-only tools. To run them:"
+  IO.println ""
+  IO.println "    cd tests && lake test"
+  return 1

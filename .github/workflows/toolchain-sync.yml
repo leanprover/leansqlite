@@ -1,0 +1,36 @@
+name: Toolchain Sync
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+jobs:
+  toolchain-sync:
+    name: tests/ lean-toolchain consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check that tests/ lean-toolchain matches root
+        run: |
+          ROOT_TC=$(cat lean-toolchain)
+          echo "Root lean-toolchain: $ROOT_TC"
+          FAILED=0
+          for proj in tests; do
+            PROJ_TC=$(cat "$proj/lean-toolchain")
+            if [ "$PROJ_TC" != "$ROOT_TC" ]; then
+              echo "MISMATCH: $proj/lean-toolchain ($PROJ_TC) does not match root ($ROOT_TC)"
+              FAILED=1
+            else
+              echo "OK: $proj/lean-toolchain"
+            fi
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            echo ""
+            echo "To fix automatically, comment '!consistent' on the PR."
+            exit 1
+          fi
