@@ -21,3 +21,4 @@ trace*
 .vscode/
 .idea/
 *.code-workspace
+.lake

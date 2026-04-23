@@ -24,6 +24,7 @@ jobs:
         uses: leanprover/lean-action@v1
         with:
           build: false
+          test: false
 
       - name: Run C linter and formatter
         run: ./lint-format-c.sh --check

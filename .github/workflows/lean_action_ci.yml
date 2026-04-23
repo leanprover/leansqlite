@@ -28,6 +28,13 @@ jobs:
         run: echo "${{ matrix.lean-version }}" > lean-toolchain
 
       - uses: leanprover/lean-action@v1
+        with:
+          test: false
+
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: tests
+          test: true
 
   test-large-files:
     runs-on: ubuntu-latest
@@ -63,11 +70,13 @@ jobs:
         uses: actions/cache/restore@v3
         id: cache-lake
         with:
-          path: .lake
-          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ hashFiles('**/*.lean', 'bindings/**/*') }}
+          path: |
+            .lake
+            tests/.lake
+          key: lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json', 'tests/lean-toolchain', 'tests/lakefile.lean', 'tests/lake-manifest.json') }}-${{ hashFiles('**/*.lean', 'bindings/**/*') }}
           restore-keys: |
-            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-${{ hashFiles('**/*.lean', 'bindings/**/*') }}
-            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean') }}-
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json', 'tests/lean-toolchain', 'tests/lakefile.lean', 'tests/lake-manifest.json') }}-${{ hashFiles('**/*.lean', 'bindings/**/*') }}
+            lake-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json', 'tests/lean-toolchain', 'tests/lakefile.lean', 'tests/lake-manifest.json') }}-
             lake-${{ runner.os }}-
 
       - name: Build project
@@ -84,7 +93,9 @@ jobs:
         uses: actions/cache/save@v3
         if: steps.cache-lake.outputs.cache-hit != 'true'
         with:
-          path: .lake
+          path: |
+            .lake
+            tests/.lake
           key: ${{ steps.cache-lake.outputs.cache-primary-key }}
 
       - name: Create large test database
@@ -120,4 +131,5 @@ jobs:
           du -h large_test.db  # Shows actual disk usage (should be small)
 
       - name: Test large file support
-        run: lake test -- large_test.db
+        working-directory: tests
+        run: lake test -- ../large_test.db
