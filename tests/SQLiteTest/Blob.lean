@@ -98,7 +98,7 @@ instance [ToBinary α] [FromBinary α] [Arbitrary α] [Repr α] [BEq α] [Shrink
 instance : Coe CanTest Type where
   coe t := t.α
 
-def Testable.test' (t : CanTest) : let {α, ..} := t; IO (TestResult (∀ pre post (u : α), toFromBinary pre post u = true)) := do
+def Testable.test' (t : CanTest) : let {α, ..} := t; IO (TestResult (∀ pre post (u : α), toFromBinary pre post u = true)) :=
   let {α, ..} := t
   testProp <| ∀ pre post (u : α), toFromBinary pre post u = true
 
