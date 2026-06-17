@@ -30,6 +30,9 @@ Author: David Thrane Christiansen
 // Forward declaration for SHA3 extension initialization (defined in shathree.c)
 int sqlite3_shathree_init(sqlite3 *db, char **pzErrMsg, const void *pApi);
 
+// Accessor exported from SQLite.FFI
+extern lean_obj_res leansqlite_option_string_get(lean_obj_arg option);
+
 void leansqlite_connection_finalize(void *connection) {
   // Uses sqlite3_close instead of sqlite3_close_v2 because uses of the connection will have
   // references to it, so it won't be freed/finalized until they are.
@@ -132,22 +135,27 @@ lean_obj_res leansqlite_open(lean_obj_arg filename) {
 // Uses standard return convention: lean_obj_res
 // filename is consumed: lean_obj_arg
 // flags is a value: int32_t
-// vfs is consumed: lean_obj_arg (empty string means NULL)
+// vfs is consumed: lean_obj_arg (an Option String; none selects the default VFS)
 LEANSQLITE_API
 lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_arg vfs) {
   const char *filename_str = lean_string_cstr(filename);
 
   const char *vfs_str = NULL;
-  // checks for none vs some: none is a scalar
+  lean_object *vfs_string = NULL;
+  // none is a scalar. In the some case the accessor consumes vfs and returns an owned string whose
+  // buffer backs vfs_str, so it must outlive the open call. In the none case vfs is a scalar that
+  // needs no decrement.
   if (!lean_is_scalar(vfs)) {
-    lean_object *lean_vfs_str = lean_ctor_get(vfs, 0);
-    vfs_str = lean_string_cstr(lean_vfs_str);
+    vfs_string = leansqlite_option_string_get(vfs);
+    vfs_str = lean_string_cstr(vfs_string);
   }
 
   sqlite3 *db;
   int code = sqlite3_open_v2(filename_str, &db, flags, vfs_str);
   lean_dec(filename);
-  lean_dec(vfs);
+  if (vfs_string != NULL) {
+    lean_dec(vfs_string);
+  }
   if (code != SQLITE_OK) {
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
     sqlite3_close(db);

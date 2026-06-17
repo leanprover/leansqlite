@@ -1239,6 +1239,19 @@ def testOpenWith (dbPath : System.FilePath) : TestM Unit :=
       expect (x == 42) s!"Expected 42, got {x}"
       recordSuccess "Successfully wrote to database opened with readwrite + create"
 
+    -- Test that an explicit VFS name (the `some` case of the Option String argument) is forwarded
+    -- to SQLite intact. A name that matches no registered VFS makes sqlite3_open_v2 report it back,
+    -- which confirms the exact string crossed the FFI boundary.
+    let missingVfs := "leansqlite_no_such_vfs"
+    try
+      let _db ← SQLite.openWith dbPath { mode := .readonly } (vfs := some missingVfs)
+      recordFailure "Expected error when opening with an unregistered VFS name"
+    catch e =>
+      let msg := toString e
+      expect ((msg.splitOn missingVfs).length > 1)
+        s!"Expected error to mention the VFS name '{missingVfs}', got: {e}"
+      recordSuccess "Explicit VFS name forwarded across FFI (none vs some Option String handling)"
+
     -- Test that readonly fails if database doesn't exist
     let nonExistentPath := dbPath.parent.getD "." / "nonexistent-test-db-readonly.db"
     -- Make sure it doesn't exist
