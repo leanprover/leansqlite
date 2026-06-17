@@ -30,9 +30,6 @@ Author: David Thrane Christiansen
 // Forward declaration for SHA3 extension initialization (defined in shathree.c)
 int sqlite3_shathree_init(sqlite3 *db, char **pzErrMsg, const void *pApi);
 
-// Accessor exported from SQLite.FFI
-extern lean_obj_res leansqlite_option_string_get(lean_obj_arg option);
-
 void leansqlite_connection_finalize(void *connection) {
   // Uses sqlite3_close instead of sqlite3_close_v2 because uses of the connection will have
   // references to it, so it won't be freed/finalized until they are.
@@ -135,27 +132,23 @@ lean_obj_res leansqlite_open(lean_obj_arg filename) {
 // Uses standard return convention: lean_obj_res
 // filename is consumed: lean_obj_arg
 // flags is a value: int32_t
-// vfs is consumed: lean_obj_arg (an Option String; none selects the default VFS)
+// vfs is consumed: lean_obj_arg (the VFS name; an empty string selects the default VFS)
 LEANSQLITE_API
 lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_arg vfs) {
   const char *filename_str = lean_string_cstr(filename);
 
-  const char *vfs_str = NULL;
-  lean_object *vfs_string = NULL;
-  // none is a scalar. In the some case the accessor consumes vfs and returns an owned string whose
-  // buffer backs vfs_str, so it must outlive the open call. In the none case vfs is a scalar that
-  // needs no decrement.
-  if (!lean_is_scalar(vfs)) {
-    vfs_string = leansqlite_option_string_get(vfs);
-    vfs_str = lean_string_cstr(vfs_string);
+  // The Option String is decomposed in Lean and passed here as a plain string, so the bindings
+  // never inspect a Lean constructor. An empty name means no VFS was requested, which maps to the
+  // NULL that sqlite3_open_v2 treats as the default VFS.
+  const char *vfs_str = lean_string_cstr(vfs);
+  if (vfs_str[0] == '\0') {
+    vfs_str = NULL;
   }
 
   sqlite3 *db;
   int code = sqlite3_open_v2(filename_str, &db, flags, vfs_str);
   lean_dec(filename);
-  if (vfs_string != NULL) {
-    lean_dec(vfs_string);
-  }
+  lean_dec(vfs);
   if (code != SQLITE_OK) {
     lean_object *msg = lean_mk_string(sqlite3_errmsg(db));
     sqlite3_close(db);

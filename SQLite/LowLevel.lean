@@ -127,7 +127,7 @@ it is ignored.
 -/
 public def openWith (filename : System.FilePath) (flags : OpenFlags) (vfs : Option String := none) (busyTimeoutMs : Int32 := 0) : IO SQLite := do
   let flagBits := flags.toInt
-  let connection ← FFI.openV2 filename.toString flagBits vfs
+  let connection ← FFI.openV2 filename.toString flagBits (vfs.getD "")
   if busyTimeoutMs > 0 then
     FFI.busyTimeout connection busyTimeoutMs
   return { filename, connection }

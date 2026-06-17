@@ -44,19 +44,14 @@ public instance : Repr Value where
   reprPrec _ _ := "#<sqlite3_value *>"
 
 
--- Extracts the payload of a `some`, exported for the C bindings to call instead of reading the
--- constructor field directly. The C side checks the tag (`none` is a scalar) before calling this,
--- so the `none` branch is never reached from there.
-@[export leansqlite_option_string_get]
-private def optionStringGet : Option String → String
-  | some s => s
-  | none => ""
-
 @[extern "leansqlite_open"]
 opaque «open» : String → IO Conn
 
+-- The VFS name is passed as a plain `String` rather than an `Option String` so that the C bindings
+-- never inspect a Lean constructor. The empty string selects the default VFS; callers convert from
+-- `Option String` in `openWith`.
 @[extern "leansqlite_open_v2"]
-opaque openV2 : String → Int32 → Option String → IO Conn
+opaque openV2 : String → Int32 → String → IO Conn
 
 @[extern "leansqlite_prepare"]
 private opaque prepare : @&Conn → String → IO Stmt
