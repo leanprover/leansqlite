@@ -277,6 +277,8 @@ public instance [ToBinary α] [ToBinary β] : ToBinary (α × β) where
   serializer
     | (x, y), b =>  b |> ToBinary.serializer x |> ToBinary.serializer y
 
+-- TODO Workaround for toolchain bump
+set_option linter.checkUnivs false in
 public instance [FromBinary α] [FromBinary β] : FromBinary (α × β) where
   deserializer := do return (← FromBinary.deserializer, ← FromBinary.deserializer)
 
