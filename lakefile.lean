@@ -53,10 +53,14 @@ lean_lib SQLite where
   needs := #[leansqlite]
   precompileModules := true
 
+-- Tests live in the `tests/` subproject rather than here, so that downstream projects depending on
+-- `leansqlite` don't acquire a transitive dependency on test-only tools (e.g. `plausible`).
 @[test_driver]
-script tests do
-  IO.println "Test are found in the `tests/` subproject."
-  IO.println "This avoids downstream projects acquiring a transitive dependency on test-only tools. To run them:"
-  IO.println ""
-  IO.println "    cd tests && lake test"
-  return 1
+script tests (args) do
+  let pkg ← getRootPackage
+  let child ← IO.Process.spawn {
+    cmd := "lake"
+    args := #["test", "--"] ++ args.toArray
+    cwd := pkg.dir / "tests"
+  }
+  child.wait
