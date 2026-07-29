@@ -13,7 +13,7 @@ public import Lean.Message
 public import SQLite.Blob.Classes
 public import Std.Data.HashMap
 public import Std.Data.TreeMap
-import SQLite.Blob.Deriving
+meta import SQLite.Blob.Deriving
 
 open Lean
 open SQLite Blob

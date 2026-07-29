@@ -51,6 +51,7 @@ extern_lib leansqlite pkg := do
 @[default_target]
 lean_lib SQLite where
   needs := #[leansqlite]
+  -- Needed to interpret `@[extern]` symbols defined in `SQLite.FFI`.
   precompileModules := true
 
 @[test_driver]

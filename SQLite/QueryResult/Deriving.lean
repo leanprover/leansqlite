@@ -5,8 +5,8 @@ Author: David Thrane Christiansen
 -/
 module
 
-import Lean.Elab.Deriving.Basic
-import Lean.Elab.Deriving.Util
+meta import Lean.Elab.Deriving.Basic
+meta import Lean.Elab.Deriving.Util
 import SQLite.QueryParam
 import SQLite.QueryResult
 
@@ -27,7 +27,7 @@ open Elab.Deriving
 Returns the number of explicit (non-implicit, non-instance) parameters for a constructor,
 excluding the inductive type's parameters.
 -/
-private def getCtorFieldCount (ctorName : Name) : MetaM Nat := do
+private meta def getCtorFieldCount (ctorName : Name) : MetaM Nat := do
   let ctorInfo ← getConstInfoCtor ctorName
   -- numFields is the number of fields excluding the inductive type's parameters
   return ctorInfo.numFields
@@ -35,7 +35,7 @@ private def getCtorFieldCount (ctorName : Name) : MetaM Nat := do
 /--
 Information about constructor fields, distinguishing proofs from data.
 -/
-private structure CtorFieldInfo where
+private meta structure CtorFieldInfo where
   /-- Total number of fields -/
   totalFields : Nat
   /-- Indices of non-proof fields (0-indexed) -/
@@ -46,7 +46,7 @@ private structure CtorFieldInfo where
 Analyzes constructor fields to identify which are proofs (have {lean}`Prop` type) and which are data.
 Returns the total field count and the indices of non-proof fields.
 -/
-private def analyzeCtorFields (ctorName : Name) : MetaM CtorFieldInfo := do
+private meta def analyzeCtorFields (ctorName : Name) : MetaM CtorFieldInfo := do
   let ctorInfo ← getConstInfoCtor ctorName
   forallTelescopeReducing ctorInfo.type fun args _ => do
     -- Skip the inductive type's parameters
@@ -63,7 +63,7 @@ private def analyzeCtorFields (ctorName : Name) : MetaM CtorFieldInfo := do
 Checks whether any constructor field's type depends on a previous field.
 Returns {name}`true` if there are no dependencies, which means {name}`Row` can be derived.
 -/
-private def hasNoFieldDependencies (ctorName : Name) : MetaM Bool := do
+private meta def hasNoFieldDependencies (ctorName : Name) : MetaM Bool := do
   let ctorInfo ← getConstInfoCtor ctorName
   forallTelescopeReducing ctorInfo.type fun args _ => do
     let fieldArgs := args[ctorInfo.numParams:].toArray
@@ -80,13 +80,13 @@ private def hasNoFieldDependencies (ctorName : Name) : MetaM Bool := do
 /--
 Returns true if the inductive type has exactly one constructor.
 -/
-private def isSingleConstructor (indVal : InductiveVal) : Bool :=
+private meta def isSingleConstructor (indVal : InductiveVal) : Bool :=
   indVal.ctors.length == 1
 
 /--
 Gets the InductiveVal for a name, if it exists.
 -/
-private def getInductiveVal? (env : Environment) (name : Name) : Option InductiveVal :=
+private meta def getInductiveVal? (env : Environment) (name : Name) : Option InductiveVal :=
   match env.find? name with
   | some (.inductInfo val) => some val
   | _ => none
@@ -96,7 +96,7 @@ Variant of {name}`Lean.Elab.Deriving.mkHeader` that doesn't add an explicit bind
 for the target value. We only need implicit type parameters and instance binders.
 The {name}`constraintClass` parameter specifies which type class to use for instance constraints.
 -/
-private def mkHeader (constraintClass : Name) (indVal : InductiveVal) : TermElabM Header := do
+private meta def mkHeader (constraintClass : Name) (indVal : InductiveVal) : TermElabM Header := do
   let argNames ← mkInductArgNames indVal
   let binders ← mkImplicitBinders argNames
   let targetType ← mkInductiveApp indVal argNames
@@ -119,7 +119,7 @@ parameter is read sequentially from the row using its {lean}`ResultColumn` insta
 /--
 Creates the body of the {name}`Row.read` function for a single-constructor inductive.
 -/
-private def mkRowReadBody (indVal : InductiveVal) : TermElabM Term := do
+private meta def mkRowReadBody (indVal : InductiveVal) : TermElabM Term := do
   let ctorName := indVal.ctors[0]!
   let numFields ← getCtorFieldCount ctorName
 
@@ -133,7 +133,7 @@ private def mkRowReadBody (indVal : InductiveVal) : TermElabM Term := do
 /--
 Generates a private definition that will be used as the {name}`Row.read` implementation.
 -/
-private def mkRowAuxFunction (ctx : Deriving.Context) (i : Nat) : TermElabM Command := do
+private meta def mkRowAuxFunction (ctx : Deriving.Context) (i : Nat) : TermElabM Command := do
   let auxFunName := ctx.auxFunNames[i]!
   let indVal := ctx.typeInfos[i]!
 
@@ -151,7 +151,7 @@ Creates instance commands for {name}`Row`. This is a custom version of {name}`El
 because {name}`Row` instances need {name}`ResultColumn` constraints (what {name}`RowReader.field` uses) rather
 than {name}`Row` constraints.
 -/
-private def mkRowInstanceCmds (ctx : Deriving.Context) (typeNames : Array Name) : TermElabM (Array Command) := do
+private meta def mkRowInstanceCmds (ctx : Deriving.Context) (typeNames : Array Name) : TermElabM (Array Command) := do
   let mut instances := #[]
   for i in [:ctx.typeInfos.size] do
     let indVal := ctx.typeInfos[i]!
@@ -177,7 +177,7 @@ This handler supports any single-constructor inductive type where no field's typ
 depends on a previous field. Each constructor parameter is read sequentially using
 its {name}`ResultColumn` instance.
 -/
-def mkRowInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
+private meta def mkRowInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
   let env ← getEnv
   -- Only handle single-constructor inductives with no field dependencies
   if ← declNames.allM fun name => do
@@ -195,7 +195,7 @@ def mkRowInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
   else
     return false
 
-initialize
+meta initialize
   registerDerivingHandler ``Row mkRowInstanceHandler
 
 /-!
@@ -208,7 +208,7 @@ types (trivial wrappers).
 /--
 Generates a private definition that will be used as the {name}`ResultColumn.get` implementation.
 -/
-private def mkResultColumnAuxFunction (ctx : Deriving.Context) (i : Nat) : TermElabM Command := do
+private meta def mkResultColumnAuxFunction (ctx : Deriving.Context) (i : Nat) : TermElabM Command := do
   let auxFunName := ctx.auxFunNames[i]!
   let indVal := ctx.typeInfos[i]!
   let header ← mkHeader ``ResultColumn indVal
@@ -224,7 +224,7 @@ The main deriving handler for the {name}`ResultColumn` type class.
 This handler supports single-constructor, single-field inductive types (trivial wrappers),
 since {name}`ResultColumn` reads a single column value from a SQLite query.
 -/
-def mkResultColumnInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
+private meta def mkResultColumnInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
   let env ← getEnv
   -- Only handle single-constructor, single-field inductives
   let canHandle ←
@@ -243,7 +243,7 @@ def mkResultColumnInstanceHandler (declNames : Array Name) : CommandElabM Bool :
   else
     return false
 
-initialize
+meta initialize
   registerDerivingHandler ``ResultColumn mkResultColumnInstanceHandler
 
 /-!
@@ -257,7 +257,7 @@ deriving for types like subtypes.
 /--
 Generates a private definition that will be used as the {name}`QueryParam.bind` implementation.
 -/
-private def mkQueryParamAuxFunction (ctx : Deriving.Context) (i : Nat) : TermElabM Command := do
+private meta def mkQueryParamAuxFunction (ctx : Deriving.Context) (i : Nat) : TermElabM Command := do
   let auxFunName := ctx.auxFunNames[i]!
   let indVal := ctx.typeInfos[i]!
   let header ← mkHeader ``QueryParam indVal
@@ -286,7 +286,7 @@ This handler supports single-constructor inductive types with exactly one non-pr
 Proof fields (fields with {lean}`Prop` type) are ignored. This allows deriving for types like
 subtypes that carry proof obligations.
 -/
-def mkQueryParamInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
+private meta def mkQueryParamInstanceHandler (declNames : Array Name) : CommandElabM Bool := do
   let env ← getEnv
   -- Only handle single-constructor inductives with exactly one non-proof field
   if ← declNames.allM fun name => do
@@ -304,5 +304,5 @@ def mkQueryParamInstanceHandler (declNames : Array Name) : CommandElabM Bool := 
   else
     return false
 
-initialize
+meta initialize
   registerDerivingHandler ``QueryParam mkQueryParamInstanceHandler
