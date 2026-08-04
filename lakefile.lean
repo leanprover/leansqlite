@@ -13,12 +13,21 @@ package leansqlite where
   license := "Apache-2.0"
   leanOptions := #[⟨`experimental.module, true⟩]
 
+/--
+Adds headers to a source job, so that editing a header rebuilds the object compiled from a source
+that includes it.
+-/
+private def withHeaders (headers : Array FilePath) (srcJob : Job FilePath) : FetchM (Job FilePath) := do
+  let mut job := srcJob
+  for header in headers do
+    let headerJob ← inputTextFile header
+    job := job.zipWith (fun (src : FilePath) (_ : FilePath) => src) headerJob
+  return job
+
 target sqlite.o pkg : FilePath := do
   let oFile := pkg.buildDir / "sqlite3.o"
+  -- The bundled SQLite contains its own headers
   let srcJob ← inputTextFile <| pkg.dir / "bindings" / "sqlite3.c"
-  let hJob ← inputTextFile <| pkg.dir / "bindings" / "sqlite3.h"
-  let extJob ← inputTextFile <| pkg.dir / "bindings" / "sqlite3ext.h"
-  let srcJob := srcJob |>.add hJob |>.add extJob
   let weakArgs := #["-I", (pkg.dir / "bindings").toString]
   -- LFS support is disabled. This is because it causes linker errors on Linux, where newer glibc
   -- headers use macros to redirect standard functions (fcntl, fopen, etc.) to their 64-bit variants
@@ -32,14 +41,18 @@ target leansqlite.o pkg : FilePath := do
   let sqliteHeaders := pkg.dir / "bindings"
   let oFile := pkg.buildDir / "leansqlite.o"
   let srcJob ← inputTextFile <| pkg.dir / "bindings" / "leansqlite.c"
+  let srcJob ← withHeaders #[sqliteHeaders / "sqlite3.h"] srcJob
   let weakArgs := #["-I", (← getLeanIncludeDir).toString, "-I", sqliteHeaders.toString]
   buildO oFile srcJob weakArgs (traceArgs := #["-fPIC"]) (extraDepTrace := getLeanTrace)
 
 target shathree.o pkg : FilePath := do
+  let sqliteHeaders := pkg.dir / "bindings"
   let oFile := pkg.buildDir / "shathree.o"
   let srcJob ← inputTextFile <| pkg.dir / "bindings" / "shathree.c"
-  let weakArgs := #["-I", (pkg.dir / "bindings").toString, "-DSQLITE_CORE"]
-  buildO oFile srcJob weakArgs (traceArgs := #["-fPIC"]) (extraDepTrace := getLeanTrace)
+  -- `sqlite3ext.h` includes `sqlite3.h`.
+  let srcJob ← withHeaders #[sqliteHeaders / "sqlite3ext.h", sqliteHeaders / "sqlite3.h"] srcJob
+  let weakArgs := #["-I", sqliteHeaders.toString]
+  buildO oFile srcJob weakArgs (traceArgs := #["-fPIC", "-DSQLITE_CORE"]) (extraDepTrace := getLeanTrace)
 
 extern_lib leansqlite pkg := do
   let sqliteObj ← sqlite.o.fetch
