@@ -56,6 +56,9 @@ SQLite is compiled with the following flags:
 
 ## Development
 
+Building the library requires a C compiler called `cc` on the `PATH`,
+because the SQLite library and the FFI bindings are compiled from source.
+
 To build the library, use the standard Lake build command from the
 repository root. This will compile both the SQLite amalgamation and
 the Lean bindings, producing the library and any default targets.
