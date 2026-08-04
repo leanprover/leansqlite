@@ -35,7 +35,10 @@ jobs:
       - uses: leanprover/lean-action@v1
         with:
           lake-package-directory: tests
+          build: true
+          build-args: "--wfail"
           test: true
+          test-args: "--wfail"
 
   test-large-files:
     runs-on: ubuntu-latest
@@ -81,7 +84,7 @@ jobs:
             lake-${{ runner.os }}-
 
       - name: Build project
-        run: lake build
+        run: lake build --wfail
 
       - name: Save elan cache
         uses: actions/cache/save@v3
@@ -133,4 +136,4 @@ jobs:
 
       - name: Test large file support
         working-directory: tests
-        run: lake test -- ../large_test.db
+        run: lake test --wfail -- ../large_test.db

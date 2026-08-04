@@ -374,7 +374,7 @@ instance [Shrinkable α] : Shrinkable (Doc.ListItem α) where
   shrink
     | ⟨xs⟩ => Shrinkable.shrink xs |>.map (⟨·⟩)
 
-instance [Arbitrary α] [Arbitrary β] : Arbitrary (Doc.DescItem α β) where
+instance {α β : Type u} [Arbitrary α] [Arbitrary β] : Arbitrary (Doc.DescItem α β) where
   arbitrary := return { term := ← arbitrary, desc := ← arbitrary }
 
 instance [Shrinkable α] [Shrinkable β] : Shrinkable (Doc.DescItem α β) where
