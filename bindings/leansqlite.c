@@ -132,16 +132,17 @@ lean_obj_res leansqlite_open(lean_obj_arg filename) {
 // Uses standard return convention: lean_obj_res
 // filename is consumed: lean_obj_arg
 // flags is a value: int32_t
-// vfs is consumed: lean_obj_arg (empty string means NULL)
+// vfs is consumed: lean_obj_arg (the VFS name; an empty string selects the default VFS)
 LEANSQLITE_API
 lean_obj_res leansqlite_open_v2(lean_obj_arg filename, int32_t flags, lean_obj_arg vfs) {
   const char *filename_str = lean_string_cstr(filename);
 
-  const char *vfs_str = NULL;
-  // checks for none vs some: none is a scalar
-  if (!lean_is_scalar(vfs)) {
-    lean_object *lean_vfs_str = lean_ctor_get(vfs, 0);
-    vfs_str = lean_string_cstr(lean_vfs_str);
+  // The Option String is decomposed in Lean and passed here as a plain string, so the bindings
+  // never inspect a Lean constructor. An empty name means no VFS was requested, which maps to the
+  // NULL that sqlite3_open_v2 treats as the default VFS.
+  const char *vfs_str = lean_string_cstr(vfs);
+  if (vfs_str[0] == '\0') {
+    vfs_str = NULL;
   }
 
   sqlite3 *db;

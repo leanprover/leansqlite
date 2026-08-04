@@ -47,8 +47,11 @@ public instance : Repr Value where
 @[extern "leansqlite_open"]
 opaque «open» : String → IO Conn
 
+-- The VFS name is passed as a plain `String` rather than an `Option String` so that the C bindings
+-- never inspect a Lean constructor. The empty string selects the default VFS; callers convert from
+-- `Option String` in `openWith`.
 @[extern "leansqlite_open_v2"]
-opaque openV2 : String → Int32 → Option String → IO Conn
+opaque openV2 : String → Int32 → String → IO Conn
 
 @[extern "leansqlite_prepare"]
 private opaque prepare : @&Conn → String → IO Stmt

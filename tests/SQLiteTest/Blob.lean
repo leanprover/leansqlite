@@ -77,6 +77,7 @@ local instance : Repr ByteArray where
 
 def testUnit' := testProp <| ∀ (u : Unit), u == u
 
+@[implicit_reducible]
 def inst : Testable
       (NamedBinder "pre"
         (∀ (pre : ByteArray),
