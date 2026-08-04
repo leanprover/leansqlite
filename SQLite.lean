@@ -9,5 +9,5 @@ public import SQLite.LowLevel
 public import SQLite.Blob
 public import SQLite.QueryParam
 public import SQLite.QueryResult
-public import SQLite.QueryResult.Deriving
+meta import SQLite.QueryResult.Deriving
 public import SQLite.Interpolation
