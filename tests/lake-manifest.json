@@ -5,7 +5,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "054b228ce0ac61d767c6e71ba73a24728f191b72",
+   "rev": "0d8633efc105d6b15b59a8103614ae0291ee8827",
    "name": "plausible",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",
